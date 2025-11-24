@@ -1,0 +1,23 @@
+{
+  "name": "kosdak-bot",
+  "version": "1.0.0",
+  "description": "Delayed Quote Premium AI Stock Analysis & Alert Web Platform",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "install": "cd backend && npm install && cd ../frontend && npm install",
+    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"bgBlue.bold,bgMagenta.bold\" \"cd backend && npm run start:dev\" \"cd frontend && npm run dev\"",
+    "start": "npm run dev",
+    "build": "cd backend && npm run build && cd ../frontend && npm run build",
+    "worker:candles": "cd backend && npm run worker:candles",
+    "worker:alerts": "cd backend && npm run worker:alerts",
+    "worker:ai": "cd backend && npm run worker:ai"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
+
