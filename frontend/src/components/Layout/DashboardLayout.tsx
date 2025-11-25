@@ -38,7 +38,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-dark-300">
+    <div className="min-h-screen bg-[#0D0D0D]">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -49,17 +49,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-50 h-full w-64 glass transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 left-0 z-50 h-full w-64 bg-[#0D0D0D] border-r border-white/10 transform transition-transform duration-300 ease-in-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } lg:translate-x-0`}
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-800">
-            <h1 className="text-xl font-bold">Kosdak Bot</h1>
+          <div className="flex items-center justify-between p-6 border-b border-white/10">
+            <h1 className="text-xl font-bold text-white">Kosdak Bot</h1>
             <button
               onClick={() => setSidebarOpen(false)}
-              className="lg:hidden"
+              className="lg:hidden text-white"
             >
               <X className="w-6 h-6" />
             </button>
@@ -76,7 +76,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     router.push(item.href)
                     setSidebarOpen(false)
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-dark-200 transition"
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[#15171A] transition text-white"
                 >
                   <Icon className="w-5 h-5" />
                   <span>{item.name}</span>
@@ -86,7 +86,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           </nav>
 
           {/* User info */}
-          <div className="p-4 border-t border-gray-800">
+          <div className="p-4 border-t border-white/10">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center">
                 <span className="font-semibold">
@@ -94,13 +94,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{user?.name}</p>
-                <p className="text-sm text-gray-400 truncate">{user?.email}</p>
+                <p className="font-medium truncate text-white">{user?.name}</p>
+                <p className="text-sm text-[#CFCFCF] truncate">{user?.email}</p>
               </div>
             </div>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-dark-200 transition text-red-400"
+              className="w-full flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-[#15171A] transition text-red-400"
             >
               <LogOut className="w-5 h-5" />
               <span>로그아웃</span>
@@ -110,13 +110,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </aside>
 
       {/* Main content */}
-      <div className="lg:pl-64">
+      <div className="lg:pl-64 bg-[#0D0D0D]">
         {/* Top bar */}
-        <header className="glass sticky top-0 z-30 border-b border-gray-800">
-          <div className="flex items-center justify-between p-4">
+        <header className="bg-[#0D0D0D] sticky top-0 z-30">
+          <div className="flex items-center justify-between p-6">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden"
+              className="lg:hidden text-white"
             >
               <Menu className="w-6 h-6" />
             </button>
@@ -124,7 +124,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="flex-1 lg:flex-none"></div>
 
             <div className="flex items-center gap-4">
-              <button className="relative p-2 hover:bg-dark-200 rounded-lg transition">
+              <button className="relative p-2 hover:bg-[#15171A] rounded-lg transition text-white">
                 <Bell className="w-5 h-5" />
                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
               </button>
@@ -133,7 +133,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </header>
 
         {/* Page content */}
-        <main className="p-6 lg:p-8">{children}</main>
+        <main className="p-6 lg:p-8 bg-[#0D0D0D]">{children}</main>
       </div>
     </div>
   )

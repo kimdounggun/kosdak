@@ -75,7 +75,7 @@ export default function AiReportViewer({ report }: AiReportViewerProps) {
     const sections = parseReport(report)
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             {sections.map((section, index) => {
                 const Icon = section.icon
                 return (
@@ -84,17 +84,17 @@ export default function AiReportViewer({ report }: AiReportViewerProps) {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.3, delay: index * 0.1 }}
                         key={index}
-                        className="glass p-5 rounded-xl border border-white/5 hover:border-primary-500/30 transition-colors group"
+                        className="bg-[#0D0D0D] p-6 rounded-xl border border-white/10 hover:border-white/20 transition-colors group shadow-lg"
                     >
-                        <div className="flex items-start gap-4">
-                            <div className="p-3 rounded-lg bg-dark-200 group-hover:bg-primary-500/20 transition-colors">
-                                <Icon className="w-6 h-6 text-primary-400 group-hover:text-primary-300" />
+                        <div className="flex items-start gap-5">
+                            <div className="p-4 rounded-lg bg-[#15171A] group-hover:bg-[#00E5A8]/20 transition-colors">
+                                <Icon className="w-7 h-7 text-[#00E5A8] group-hover:text-[#00E5A8]" />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-lg font-bold text-gray-100 mb-2 group-hover:text-primary-300 transition-colors">
+                                <h3 className="text-xl font-bold text-white mb-3 group-hover:text-[#00E5A8] transition-colors">
                                     {section.title}
                                 </h3>
-                                <p className="text-gray-400 leading-relaxed text-sm md:text-base">
+                                <p className="text-[#CFCFCF] leading-relaxed text-base md:text-lg font-medium">
                                     {section.content}
                                 </p>
                             </div>
