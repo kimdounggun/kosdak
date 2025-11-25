@@ -43,11 +43,18 @@ body {
   background: #444;
 }
 
-/* Glass morphism effect */
+/* Glass morphism effect - 헤지펀드 스타일 */
 .glass {
-  background: rgba(20, 20, 20, 0.7);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* Card hover effect */

@@ -152,7 +152,7 @@ export default function AiReportViewer({ report }: AiReportViewerProps) {
                 
                 return (
                     <div key={index}>
-                        <div className="bg-[#0D0D0D] px-8 py-6">
+                        <div className="glass-panel px-8 py-6">
                             <div className="flex items-start gap-6">
                                 {/* 아이콘 영역 - 얇은 라인으로 구분 */}
                                 <div className="flex-shrink-0 pt-1">
@@ -163,10 +163,13 @@ export default function AiReportViewer({ report }: AiReportViewerProps) {
                                 
                                 {/* 콘텐츠 영역 */}
                                 <div className="flex-1 min-w-0">
-                                    {/* 타이틀 - Semi-Bold */}
-                                    <h3 className="text-lg font-semibold text-white mb-4 tracking-tight">
-                                        {institutionalTitle}
-                                    </h3>
+                                    {/* 타이틀 - Semi-Bold + 네온 언더라인 */}
+                                    <div className="mb-4">
+                                        <h3 className="text-lg font-semibold text-white tracking-tight inline-block">
+                                            {institutionalTitle}
+                                        </h3>
+                                        <div className="h-px w-16 bg-[#00E5A8] mt-2"></div>
+                                    </div>
                                     
                                     {/* 내용 - Thin 폰트, 핵심 숫자 강조 */}
                                     <div className="text-[#CFCFCF] leading-relaxed text-base font-light">

@@ -10,6 +10,34 @@ import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, P
 import AiReportViewer from '@/components/Dashboard/AiReportViewer'
 import { Sparkles, RefreshCw } from 'lucide-react'
 
+// 스파크라인 컴포넌트
+const Sparkline = ({ data, color = '#00E5A8', width = 80, height = 30 }: { data: number[], color?: string, width?: number, height?: number }) => {
+  if (!data || data.length === 0) return null
+  
+  const min = Math.min(...data)
+  const max = Math.max(...data)
+  const range = max - min || 1
+  
+  const points = data.map((value, index) => {
+    const x = (index / (data.length - 1)) * width
+    const y = height - ((value - min) / range) * height
+    return `${x},${y}`
+  }).join(' ')
+  
+  return (
+    <svg width={width} height={height} className="overflow-visible">
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 export default function SymbolDetailPage() {
   const router = useRouter()
   const params = useParams()
@@ -281,8 +309,8 @@ export default function SymbolDetailPage() {
     <DashboardLayout>
       <div className="space-y-6">
 
-        {/* 상단 헤더 - 가격 정보 */}
-        <div className="bg-[#15171A] border border-white/10 rounded-xl p-8 shadow-xl">
+        {/* 상단 헤더 - 가격 정보 (유리 패널) */}
+        <div className="glass-panel rounded-xl p-8">
           <div className="flex items-baseline gap-4 mb-8">
             <h1 className="text-4xl font-bold text-white">{symbol?.name}</h1>
             <span className="text-lg text-[#CFCFCF] font-mono font-medium">{symbol?.code} · {symbol?.market}</span>
@@ -291,33 +319,51 @@ export default function SymbolDetailPage() {
           <div className="grid grid-cols-5 gap-8">
             <div>
               <p className="text-base text-[#CFCFCF] mb-2 font-semibold">종가</p>
-              <p className="text-3xl font-bold text-white">{latestCandle.close.toLocaleString()}원</p>
+              <div className="flex items-center gap-3">
+                <p className="text-3xl font-bold text-white">{latestCandle.close.toLocaleString()}원</p>
+                <Sparkline 
+                  data={candles.slice(0, 20).map(c => c.close).reverse()} 
+                  color={priceChange >= 0 ? '#00E5A8' : '#FF4D4D'}
+                />
+              </div>
               <p className={`text-lg font-bold mt-1 ${priceChange >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                 {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
               </p>
             </div>
             <div>
               <p className="text-base text-[#CFCFCF] mb-2 font-semibold">시가</p>
-              <p className="text-2xl font-bold text-white">{latestCandle.open.toLocaleString()}원</p>
+              <div className="flex items-center gap-3">
+                <p className="text-2xl font-bold text-white">{latestCandle.open.toLocaleString()}원</p>
+                <Sparkline data={candles.slice(0, 15).map(c => c.open).reverse()} color="#CFCFCF" />
+              </div>
             </div>
             <div>
               <p className="text-base text-[#CFCFCF] mb-2 font-semibold">고가</p>
-              <p className="text-2xl font-bold text-[#00E5A8]">{latestCandle.high.toLocaleString()}원</p>
+              <div className="flex items-center gap-3">
+                <p className="text-2xl font-bold text-[#00E5A8]">{latestCandle.high.toLocaleString()}원</p>
+                <Sparkline data={candles.slice(0, 15).map(c => c.high).reverse()} color="#00E5A8" />
+              </div>
             </div>
             <div>
               <p className="text-base text-[#CFCFCF] mb-2 font-semibold">저가</p>
-              <p className="text-2xl font-bold text-[#FF4D4D]">{latestCandle.low.toLocaleString()}원</p>
+              <div className="flex items-center gap-3">
+                <p className="text-2xl font-bold text-[#FF4D4D]">{latestCandle.low.toLocaleString()}원</p>
+                <Sparkline data={candles.slice(0, 15).map(c => c.low).reverse()} color="#FF4D4D" />
+              </div>
             </div>
             <div>
               <p className="text-base text-[#CFCFCF] mb-2 font-semibold">거래량</p>
-              <p className="text-2xl font-bold text-white">{latestCandle.volume.toLocaleString()}</p>
+              <div className="flex items-center gap-3">
+                <p className="text-2xl font-bold text-white">{latestCandle.volume.toLocaleString()}</p>
+                <Sparkline data={candles.slice(0, 15).map(c => c.volume).reverse()} color="#00D1FF" />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* 3개 핵심 지표 - 상단 강조 */}
+        {/* 3개 핵심 지표 - 상단 강조 (유리 패널) */}
         <div className="grid grid-cols-3 gap-6">
-          <div className="bg-[#15171A] border border-white/10 rounded-xl p-6 shadow-xl">
+          <div className="glass-panel rounded-xl p-6">
             <p className="text-base text-[#CFCFCF] mb-3 font-semibold">오늘 추세</p>
             <div className="flex items-center gap-3">
               <div className={`w-4 h-4 rounded-full ${trendDirection === 'BULLISH' ? 'bg-[#00E5A8]' : trendDirection === 'BEARISH' ? 'bg-[#FF4D4D]' : 'bg-[#CFCFCF]'}`}></div>
@@ -326,14 +372,38 @@ export default function SymbolDetailPage() {
               </p>
             </div>
           </div>
-          <div className="bg-[#15171A] border border-white/10 rounded-xl p-6 shadow-xl">
+          <div className="glass-panel rounded-xl p-6">
             <p className="text-base text-[#CFCFCF] mb-3 font-semibold">종합 강도 점수</p>
             <p className="text-3xl font-bold text-white">{marketStrength.score}</p>
             <p className="text-base text-[#CFCFCF] mt-1 font-medium">{marketStrength.direction}</p>
           </div>
-          <div className="bg-[#15171A] border border-white/10 rounded-xl p-6 shadow-xl">
+          <div className="glass-panel rounded-xl p-6">
             <p className="text-base text-[#CFCFCF] mb-3 font-semibold">AI 신뢰도</p>
-            <p className="text-3xl font-bold text-white">{confidenceMetrics.confidence}%</p>
+            {/* 반원 게이지 */}
+            <div className="relative w-24 h-12 mb-2">
+              <svg width="96" height="48" viewBox="0 0 96 48" className="overflow-visible">
+                {/* 배경 반원 */}
+                <path
+                  d="M 12 36 A 36 36 0 0 1 84 36"
+                  fill="none"
+                  stroke="rgba(255,255,255,0.08)"
+                  strokeWidth="1.5"
+                />
+                {/* 채워진 반원 */}
+                <path
+                  d="M 12 36 A 36 36 0 0 1 84 36"
+                  fill="none"
+                  stroke="#00E5A8"
+                  strokeWidth="2"
+                  strokeDasharray={`${(confidenceMetrics.confidence / 100) * 113} 113`}
+                  strokeLinecap="round"
+                  style={{ filter: 'drop-shadow(0 0 4px rgba(0, 229, 168, 0.5))' }}
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-2xl font-bold text-white">{confidenceMetrics.confidence}%</span>
+              </div>
+            </div>
             <p className="text-base text-[#CFCFCF] mt-1 font-medium">정확도 {confidenceMetrics.accuracy}%</p>
           </div>
         </div>
@@ -343,7 +413,7 @@ export default function SymbolDetailPage() {
 
           {/* 좌측 차트 영역 */}
           <div className="col-span-2 space-y-6">
-            <div className="bg-[#15171A] border border-white/10 rounded-xl p-8 shadow-xl">
+            <div className="glass-panel rounded-xl p-8">
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <h2 className="text-2xl font-bold text-white mb-2">현재 시세 분석</h2>
@@ -391,7 +461,7 @@ export default function SymbolDetailPage() {
 
             {/* AI 분석 리포트 섹션 - 2줄 요약 + 자세히 보기 */}
             {aiReport ? (
-              <div className="bg-[#15171A] border border-white/10 rounded-xl p-8 shadow-xl">
+              <div className="glass-panel rounded-xl p-8">
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-bold text-white">AI 분석 리포트</h2>
                   <span className="text-base text-[#CFCFCF] font-medium">
@@ -400,7 +470,7 @@ export default function SymbolDetailPage() {
                 </div>
                 {/* 2줄 요약 */}
                 {!showFullReport && (
-                  <div className="bg-[#0D0D0D] rounded-lg p-6 mb-4 border border-white/5">
+                  <div className="glass-panel rounded-lg p-6 mb-4">
                     <p className="text-lg text-white font-semibold leading-relaxed mb-3">
                       {aiReport.content?.split('\n').slice(0, 2).join(' ').substring(0, 150)}...
                     </p>
@@ -426,7 +496,7 @@ export default function SymbolDetailPage() {
                 )}
               </div>
             ) : (
-              <div className="bg-[#15171A] border border-white/10 rounded-xl p-8 shadow-xl">
+              <div className="glass-panel rounded-xl p-8">
                 <div className="text-center py-8">
                   <Sparkles className="w-16 h-16 text-[#CFCFCF] mx-auto mb-6" />
                   <p className="text-xl text-white mb-3 font-bold">AI 분석 리포트가 없습니다</p>
@@ -451,10 +521,10 @@ export default function SymbolDetailPage() {
           <div className="col-span-2 grid grid-cols-2 gap-6 auto-rows-min">
 
             {/* 1. 시장 시세 분석 (Area Chart + Data Table) */}
-            <div className="bg-[#15171A] border border-white/10 rounded-xl p-6 shadow-xl">
+            <div className="glass-panel rounded-xl p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-white">시장 시세 분석</h3>
-                <span className="text-sm text-[#CFCFCF] bg-[#0D0D0D] px-3 py-1 rounded-lg font-medium">업데이트</span>
+                <span className="text-sm text-[#CFCFCF] glass-panel px-3 py-1 rounded-lg font-medium">업데이트</span>
               </div>
               <div className="text-base text-[#CFCFCF] mb-4 font-semibold">시장 가격 추이</div>
 
@@ -480,31 +550,31 @@ export default function SymbolDetailPage() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Data Table */}
-              <div className="space-y-3 text-base">
-                <div className="grid grid-cols-3 gap-3 pb-3 border-b border-white/10">
-                  <span className="text-[#CFCFCF] font-semibold">기간</span>
-                  <span className="text-[#CFCFCF] text-right font-semibold">가격</span>
-                  <span className="text-[#CFCFCF] text-right font-semibold">변화율</span>
+              {/* Data Table - 수학적 정렬 */}
+              <div className="space-y-2 text-base">
+                <div className="grid grid-cols-3 gap-3 pb-2 border-b border-[rgba(255,255,255,0.05)]">
+                  <span className="text-[#CFCFCF] font-semibold text-left">기간</span>
+                  <span className="text-[#CFCFCF] font-semibold text-right">가격</span>
+                  <span className="text-[#CFCFCF] font-semibold text-right">변화율</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <span className="text-[#CFCFCF] font-medium">15분</span>
-                  <span className="text-white text-right font-bold">{candles[Math.min(3, candles.length - 1)]?.close.toLocaleString()}</span>
-                  <span className={`text-right font-bold ${Number(historicalChanges.min15) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                <div className="grid grid-cols-3 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
+                  <span className="text-[#CFCFCF] font-light text-left">15분</span>
+                  <span className="text-white font-semibold text-right tabular-nums">{candles[Math.min(3, candles.length - 1)]?.close.toLocaleString()}</span>
+                  <span className={`text-right font-semibold tabular-nums ${Number(historicalChanges.min15) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                     {Number(historicalChanges.min15) >= 0 ? '+' : ''}{historicalChanges.min15}%
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <span className="text-[#CFCFCF] font-medium">1시간</span>
-                  <span className="text-white text-right font-bold">{candles[Math.min(12, candles.length - 1)]?.close.toLocaleString()}</span>
-                  <span className={`text-right font-bold ${Number(historicalChanges.hour1) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                <div className="grid grid-cols-3 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
+                  <span className="text-[#CFCFCF] font-light text-left">1시간</span>
+                  <span className="text-white font-semibold text-right tabular-nums">{candles[Math.min(12, candles.length - 1)]?.close.toLocaleString()}</span>
+                  <span className={`text-right font-semibold tabular-nums ${Number(historicalChanges.hour1) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                     {Number(historicalChanges.hour1) >= 0 ? '+' : ''}{historicalChanges.hour1}%
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <span className="text-[#CFCFCF] font-medium">4시간</span>
-                  <span className="text-white text-right font-bold">{candles[Math.min(48, candles.length - 1)]?.close.toLocaleString()}</span>
-                  <span className={`text-right font-bold ${Number(historicalChanges.hour4) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                <div className="grid grid-cols-3 gap-3 py-1">
+                  <span className="text-[#CFCFCF] font-light text-left">4시간</span>
+                  <span className="text-white font-semibold text-right tabular-nums">{candles[Math.min(48, candles.length - 1)]?.close.toLocaleString()}</span>
+                  <span className={`text-right font-semibold tabular-nums ${Number(historicalChanges.hour4) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                     {Number(historicalChanges.hour4) >= 0 ? '+' : ''}{historicalChanges.hour4}%
                   </span>
                 </div>
@@ -512,10 +582,10 @@ export default function SymbolDetailPage() {
             </div>
 
             {/* 2. 신뢰 조건 & 트렌드 (Donut Chart + Legend) */}
-            <div className="bg-[#15171A] border border-white/10 rounded-xl p-6 shadow-xl">
+            <div className="glass-panel rounded-xl p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-white">신뢰 조건 & 트렌드</h3>
-                <span className="text-sm text-[#CFCFCF] bg-[#0D0D0D] px-3 py-1 rounded-lg font-medium">업데이트</span>
+                <span className="text-sm text-[#CFCFCF] glass-panel px-3 py-1 rounded-lg font-medium">업데이트</span>
               </div>
               <div className="text-base text-[#CFCFCF] mb-4 font-semibold">신호 체제 분석</div>
 
@@ -561,10 +631,10 @@ export default function SymbolDetailPage() {
             </div>
 
             {/* 3. AI 신뢰도 분석 (Area Chart + Table) */}
-            <div className="bg-[#15171A] border border-white/10 rounded-xl p-6 shadow-xl">
+            <div className="glass-panel rounded-xl p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-white">AI 신뢰도 분석</h3>
-                <span className="text-sm text-[#CFCFCF] bg-[#0D0D0D] px-3 py-1 rounded-lg font-medium">업데이트</span>
+                <span className="text-sm text-[#CFCFCF] glass-panel px-3 py-1 rounded-lg font-medium">업데이트</span>
               </div>
               <div className="text-base text-[#CFCFCF] mb-4 font-semibold">AI 신뢰도 분석</div>
 
@@ -590,36 +660,36 @@ export default function SymbolDetailPage() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Data Table */}
-              <div className="space-y-3 text-base">
-                <div className="grid grid-cols-3 gap-3 pb-3 border-b border-white/10">
-                  <span className="text-[#CFCFCF] font-semibold">지표</span>
-                  <span className="text-[#CFCFCF] text-right font-semibold">현재</span>
-                  <span className="text-[#CFCFCF] text-right font-semibold">평균</span>
+              {/* Data Table - 수학적 정렬 */}
+              <div className="space-y-2 text-base">
+                <div className="grid grid-cols-3 gap-3 pb-2 border-b border-[rgba(255,255,255,0.05)]">
+                  <span className="text-[#CFCFCF] font-semibold text-left">지표</span>
+                  <span className="text-[#CFCFCF] font-semibold text-right">현재</span>
+                  <span className="text-[#CFCFCF] font-semibold text-right">평균</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <span className="text-[#CFCFCF] font-medium">신뢰도</span>
-                  <span className="text-[#00E5A8] text-right font-bold text-lg">{confidenceMetrics.confidence}%</span>
-                  <span className="text-[#CFCFCF] text-right font-medium">65%</span>
+                <div className="grid grid-cols-3 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
+                  <span className="text-[#CFCFCF] font-light text-left">신뢰도</span>
+                  <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">{confidenceMetrics.confidence}%</span>
+                  <span className="text-[#CFCFCF] text-right font-light tabular-nums">65%</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <span className="text-[#CFCFCF] font-medium">정확도</span>
-                  <span className="text-[#00E5A8] text-right font-bold text-lg">{confidenceMetrics.accuracy}%</span>
-                  <span className="text-[#CFCFCF] text-right font-medium">70%</span>
+                <div className="grid grid-cols-3 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
+                  <span className="text-[#CFCFCF] font-light text-left">정확도</span>
+                  <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">{confidenceMetrics.accuracy}%</span>
+                  <span className="text-[#CFCFCF] text-right font-light tabular-nums">70%</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <span className="text-[#CFCFCF] font-medium">일관성</span>
-                  <span className="text-[#00E5A8] text-right font-bold text-lg">{confidenceMetrics.consistency}%</span>
-                  <span className="text-[#CFCFCF] text-right font-medium">73%</span>
+                <div className="grid grid-cols-3 gap-3 py-1">
+                  <span className="text-[#CFCFCF] font-light text-left">일관성</span>
+                  <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">{confidenceMetrics.consistency}%</span>
+                  <span className="text-[#CFCFCF] text-right font-light tabular-nums">73%</span>
                 </div>
               </div>
             </div>
 
             {/* 4. 시장 강도 지표 (Line Chart + Table) */}
-            <div className="bg-[#15171A] border border-white/10 rounded-xl p-6 shadow-xl">
+            <div className="glass-panel rounded-xl p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-white">시장 강도 지표</h3>
-                <span className="text-sm text-[#CFCFCF] bg-[#0D0D0D] px-3 py-1 rounded-lg font-medium">업데이트</span>
+                <span className="text-sm text-[#CFCFCF] glass-panel px-3 py-1 rounded-lg font-medium">업데이트</span>
               </div>
               <div className="text-base text-[#CFCFCF] mb-4 font-semibold">종합 시장 강도</div>
 
@@ -639,34 +709,34 @@ export default function SymbolDetailPage() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Data Table */}
-              <div className="space-y-3 text-base">
-                <div className="grid grid-cols-2 gap-3 pb-3 border-b border-white/10">
-                  <span className="text-[#CFCFCF] font-semibold">항목</span>
-                  <span className="text-[#CFCFCF] text-right font-semibold">값</span>
+              {/* Data Table - 수학적 정렬 */}
+              <div className="space-y-2 text-base">
+                <div className="grid grid-cols-2 gap-3 pb-2 border-b border-[rgba(255,255,255,0.05)]">
+                  <span className="text-[#CFCFCF] font-semibold text-left">항목</span>
+                  <span className="text-[#CFCFCF] font-semibold text-right">값</span>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <span className="text-[#CFCFCF] font-medium">강도 점수</span>
-                  <span className={`text-right font-bold text-lg ${marketStrength.direction === '상승' ? 'text-[#00E5A8]' : marketStrength.direction === '하락' ? 'text-[#FF4D4D]' : 'text-[#CFCFCF]'}`}>{marketStrength.score}</span>
+                <div className="grid grid-cols-2 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
+                  <span className="text-[#CFCFCF] font-light text-left">강도 점수</span>
+                  <span className={`text-right font-semibold text-lg tabular-nums ${marketStrength.direction === '상승' ? 'text-[#00E5A8]' : marketStrength.direction === '하락' ? 'text-[#FF4D4D]' : 'text-[#CFCFCF]'}`}>{marketStrength.score}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <span className="text-[#CFCFCF] font-medium">추세 방향</span>
-                  <span className={`text-right font-bold text-lg ${marketStrength.direction === '상승' ? 'text-[#00E5A8]' :
+                <div className="grid grid-cols-2 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
+                  <span className="text-[#CFCFCF] font-light text-left">추세 방향</span>
+                  <span className={`text-right font-semibold text-lg ${marketStrength.direction === '상승' ? 'text-[#00E5A8]' :
                       marketStrength.direction === '하락' ? 'text-[#FF4D4D]' : 'text-[#CFCFCF]'
                     }`}>{marketStrength.direction}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <span className="text-[#CFCFCF] font-medium">변동성</span>
-                  <span className="text-white text-right font-bold">{marketStrength.volatility}</span>
+                <div className="grid grid-cols-2 gap-3 py-1">
+                  <span className="text-[#CFCFCF] font-light text-left">변동성</span>
+                  <span className="text-white text-right font-semibold">{marketStrength.volatility}</span>
                 </div>
               </div>
             </div>
 
             {/* 5. 매수 조건 체크 (Status Indicators) */}
-            <div className="bg-[#15171A] border border-white/10 rounded-xl p-6 shadow-xl">
+            <div className="glass-panel rounded-xl p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-white">매수 조건 체크</h3>
-                <span className="text-sm text-[#CFCFCF] bg-[#0D0D0D] px-3 py-1 rounded-lg font-medium">업데이트</span>
+                <span className="text-sm text-[#CFCFCF] glass-panel px-3 py-1 rounded-lg font-medium">업데이트</span>
               </div>
               <div className="text-base text-[#CFCFCF] mb-6 font-semibold">진입 조건 필터</div>
 
