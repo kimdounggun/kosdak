@@ -18,7 +18,7 @@ export class AiController {
       dto.symbolId,
       dto.timeframe,
       dto.reportType,
-      req.user._id,
+      req.user._id.toString(),
     );
   }
 
@@ -31,14 +31,14 @@ export class AiController {
     @Query('symbolId') symbolId: string,
     @Query('timeframe') timeframe: string = '5m',
   ) {
-    return this.aiService.getLatestReport(symbolId, timeframe, req.user._id);
+    return this.aiService.getLatestReport(symbolId, timeframe, req.user._id.toString());
   }
 
   @Get('reports')
   @ApiOperation({ summary: 'Get user AI reports history' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async getUserReports(@Request() req, @Query('limit') limit: number = 20) {
-    return this.aiService.getUserReports(req.user._id, limit);
+    return this.aiService.getUserReports(req.user._id.toString(), limit);
   }
 }
 

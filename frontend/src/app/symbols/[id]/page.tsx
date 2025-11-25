@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
 import toast from 'react-hot-toast'
 import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell } from 'recharts'
+import AiReportViewer from '@/components/Dashboard/AiReportViewer'
 
 export default function SymbolDetailPage() {
   const router = useRouter()
@@ -323,6 +324,31 @@ export default function SymbolDetailPage() {
                 </ResponsiveContainer>
               </div>
             </div>
+
+            {/* AI 분석 리포트 섹션 */}
+            {aiReport ? (
+              <div className="bg-[#15171A] border border-white/5 rounded-lg p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg font-bold text-white">AI 분석 리포트</h2>
+                  <span className="text-xs text-gray-500">
+                    {new Date(aiReport.createdAt).toLocaleString('ko-KR')}
+                  </span>
+                </div>
+                <AiReportViewer report={aiReport.content || ''} />
+              </div>
+            ) : (
+              <div className="bg-[#15171A] border border-white/5 rounded-lg p-6">
+                <div className="text-center py-8">
+                  <p className="text-gray-400 mb-4">AI 분석 리포트가 없습니다</p>
+                  <button
+                    onClick={generateAiReport}
+                    className="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors"
+                  >
+                    AI 분석 생성하기
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 우측 분석 위젯 패널 - 5개 위젯, 2열 그리드 */}
