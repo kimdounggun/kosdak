@@ -103,32 +103,72 @@ export default function AiReportViewer({ report }: AiReportViewerProps) {
         let currentSection = { title: '', content: '', icon: Info }
 
         lines.forEach(line => {
-            const match = line.match(/^(\d+)\.\s*(.*?)(?::|：)\s*(.*)/)
+            // 더 유연한 패턴 매칭: "1. 제목: 내용" 또는 "1. 제목" 또는 "제목:" 형식
+            const match1 = line.match(/^(\d+)\.\s*(.*?)(?::|：)\s*(.*)/)
+            const match2 = line.match(/^(\d+)\.\s*(.*?)$/)
+            const match3 = line.match(/^(.*?)(?::|：)\s*(.*)/)
+            
+            let match = match1 || match2 || match3
+            let title = ''
+            let content = ''
 
             if (match) {
-                if (currentSection.title) {
-                    sections.push(currentSection)
+                if (match1) {
+                    // "1. 제목: 내용" 형식
+                    title = match[2].trim()
+                    content = match[3] ? match[3].trim() : ''
+                } else if (match2) {
+                    // "1. 제목" 형식
+                    title = match[2].trim()
+                    content = ''
+                } else if (match3) {
+                    // "제목: 내용" 형식
+                    title = match[1].trim()
+                    content = match[2] ? match[2].trim() : ''
                 }
 
-                const title = match[2].trim()
-                const content = match[3].trim()
+                // 제목이 있고, 섹션 키워드를 포함하는 경우에만 새 섹션으로 처리
+                if (title && (
+                    title.includes('추세') || title.includes('강도') || 
+                    title.includes('변동성') || 
+                    title.includes('수급') || title.includes('거래량') ||
+                    title.includes('지지') || title.includes('저항') ||
+                    title.includes('전망') || title.includes('요약') ||
+                    title.includes('리스크') || title.includes('주의') ||
+                    /^\d+\./.test(line) // 번호로 시작하는 경우
+                )) {
+                    if (currentSection.title) {
+                        sections.push(currentSection)
+                    }
 
-                // 키워드 기반 아이콘 매핑
-                let icon = Info
-                if (title.includes('추세') || title.includes('강도')) icon = TrendingUp
-                else if (title.includes('변동성')) icon = Activity
-                else if (title.includes('수급') || title.includes('거래량')) icon = BarChart2
-                else if (title.includes('지지') || title.includes('저항')) icon = Target
-                else if (title.includes('전망') || title.includes('요약')) icon = CheckCircle2
-                else if (title.includes('리스크') || title.includes('주의')) icon = AlertTriangle
+                    // 키워드 기반 아이콘 매핑
+                    let icon = Info
+                    if (title.includes('추세') || title.includes('강도')) icon = TrendingUp
+                    else if (title.includes('변동성')) icon = Activity
+                    else if (title.includes('수급') || title.includes('거래량')) icon = BarChart2
+                    else if (title.includes('지지') || title.includes('저항')) icon = Target
+                    else if (title.includes('전망') || title.includes('요약')) icon = CheckCircle2
+                    else if (title.includes('리스크') || title.includes('주의')) icon = AlertTriangle
 
-                currentSection = { title, content, icon }
-            } else {
-                if (currentSection.title) {
-                    currentSection.content += ' ' + line.trim()
+                    currentSection = { title, content, icon }
                 } else {
-                    if (line.trim().length > 0) {
+                    // 섹션 제목이 아니면 내용에 추가
+                    if (currentSection.title) {
+                        currentSection.content += (currentSection.content ? ' ' : '') + line.trim()
+                    } else {
+                        currentSection.content += (currentSection.content ? ' ' : '') + line.trim()
+                    }
+                }
+            } else {
+                // 매칭되지 않으면 현재 섹션의 내용에 추가
+                if (currentSection.title) {
+                    currentSection.content += (currentSection.content ? ' ' : '') + line.trim()
+                } else {
+                    // 섹션이 없으면 첫 줄을 제목으로 처리
+                    if (line.trim().length > 0 && sections.length === 0) {
                         currentSection = { title: '시장 요약', content: line.trim(), icon: Info }
+                    } else if (line.trim().length > 0) {
+                        currentSection.content += (currentSection.content ? ' ' : '') + line.trim()
                     }
                 }
             }
@@ -136,6 +176,11 @@ export default function AiReportViewer({ report }: AiReportViewerProps) {
 
         if (currentSection.title) {
             sections.push(currentSection)
+        }
+
+        // 섹션이 하나도 없으면 전체 텍스트를 하나의 섹션으로 처리
+        if (sections.length === 0 && text.trim()) {
+            return [{ title: '시장 요약', content: text.trim(), icon: Info }]
         }
 
         return sections
