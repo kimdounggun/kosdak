@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuthStore } from '@/stores/authStore'
+import { useIsAuthenticated } from '@/stores/authStore'
 import { api } from '@/lib/api'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
 import toast from 'react-hot-toast'
 
 export default function CreateAlertPage() {
   const router = useRouter()
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, isHydrated } = useIsAuthenticated()
   const [symbols, setSymbols] = useState<any[]>([])
   const [formData, setFormData] = useState({
     symbolId: '',
@@ -21,12 +21,14 @@ export default function CreateAlertPage() {
   })
 
   useEffect(() => {
+    if (!isHydrated) return
+
     if (!isAuthenticated) {
       router.push('/login')
       return
     }
     loadSymbols()
-  }, [])
+  }, [isHydrated, isAuthenticated])
 
   const loadSymbols = async () => {
     try {
@@ -68,7 +70,15 @@ export default function CreateAlertPage() {
     }
   }
 
-  if (!isAuthenticated) return null
+  if (!isHydrated || !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <DashboardLayout>

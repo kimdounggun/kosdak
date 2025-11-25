@@ -2,7 +2,7 @@
 
 import { ReactNode, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuthStore } from '@/stores/authStore'
+import { useIsAuthenticated, useAuthStore } from '@/stores/authStore'
 import {
   Home,
   TrendingUp,
@@ -20,7 +20,8 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter()
-  const { user, logout } = useAuthStore()
+  const { user } = useIsAuthenticated()
+  const { logout } = useAuthStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const navigation = [

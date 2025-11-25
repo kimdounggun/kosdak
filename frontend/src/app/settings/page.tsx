@@ -1,16 +1,30 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuthStore } from '@/stores/authStore'
+import { useIsAuthenticated } from '@/stores/authStore'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
 
 export default function SettingsPage() {
   const router = useRouter()
-  const { isAuthenticated, user } = useAuthStore()
+  const { isAuthenticated, isHydrated, user } = useIsAuthenticated()
 
-  if (!isAuthenticated) {
-    router.push('/login')
-    return null
+  useEffect(() => {
+    if (!isHydrated) return
+
+    if (!isAuthenticated) {
+      router.push('/login')
+    }
+  }, [isHydrated, isAuthenticated, router])
+
+  if (!isHydrated || !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   return (

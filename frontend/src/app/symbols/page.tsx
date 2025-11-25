@@ -2,25 +2,27 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuthStore } from '@/stores/authStore'
+import { useIsAuthenticated } from '@/stores/authStore'
 import { api } from '@/lib/api'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
 import { TrendingUp } from 'lucide-react'
 
 export default function SymbolsPage() {
   const router = useRouter()
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, isHydrated } = useIsAuthenticated()
   const [symbols, setSymbols] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('ALL')
 
   useEffect(() => {
+    if (!isHydrated) return
+
     if (!isAuthenticated) {
       router.push('/login')
       return
     }
     loadSymbols()
-  }, [])
+  }, [isHydrated, isAuthenticated])
 
   const loadSymbols = async () => {
     try {

@@ -2,30 +2,34 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { useAuthStore } from '@/stores/authStore'
+import { useIsAuthenticated } from '@/stores/authStore'
 import { api } from '@/lib/api'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
 import toast from 'react-hot-toast'
 import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell } from 'recharts'
 import AiReportViewer from '@/components/Dashboard/AiReportViewer'
+import { Sparkles, RefreshCw } from 'lucide-react'
 
 export default function SymbolDetailPage() {
   const router = useRouter()
   const params = useParams()
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, isHydrated } = useIsAuthenticated()
   const [symbol, setSymbol] = useState<any>(null)
   const [candles, setCandles] = useState<any[]>([])
   const [indicators, setIndicators] = useState<any>(null)
   const [aiReport, setAiReport] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [generatingReport, setGeneratingReport] = useState(false)
 
   useEffect(() => {
+    if (!isHydrated) return
+
     if (!isAuthenticated) {
       router.push('/login')
       return
     }
     loadData()
-  }, [])
+  }, [isHydrated, isAuthenticated])
 
   const loadData = async () => {
     try {
@@ -54,7 +58,9 @@ export default function SymbolDetailPage() {
   }
 
   const generateAiReport = async () => {
+    if (generatingReport) return
     try {
+      setGeneratingReport(true)
       toast.loading('AI 분석 중...', { id: 'ai' })
       const response = await api.post('/ai/report', {
         symbolId: params.id,
@@ -65,10 +71,20 @@ export default function SymbolDetailPage() {
       toast.success('AI 분석 완료!', { id: 'ai' })
     } catch (error) {
       toast.error('AI 분석 실패', { id: 'ai' })
+    } finally {
+      setGeneratingReport(false)
     }
   }
 
-  if (!isAuthenticated) return null
+  if (!isHydrated || !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    )
+  }
   if (loading) return <DashboardLayout><div className="p-8 text-gray-400">Loading...</div></DashboardLayout>
 
   const latestCandle = candles[0]
@@ -302,11 +318,22 @@ export default function SymbolDetailPage() {
                   <h2 className="text-lg font-bold text-white mb-1">현재 시세 분석</h2>
                   <p className="text-xs text-gray-500">AI가 추세·강도·모멘텀을 실시간 분석합니다</p>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  <button onClick={generateAiReport} className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded hover:bg-blue-700 transition-colors">
-                    AI 분석 새로고침
+                <div className="flex flex-col items-end gap-2">
+                  <button 
+                    onClick={generateAiReport}
+                    disabled={generatingReport}
+                    className={`flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-base font-bold rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg hover:shadow-blue-500/50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      generatingReport ? 'animate-pulse' : ''
+                    }`}
+                  >
+                    <Sparkles className={`w-5 h-5 ${generatingReport ? 'animate-spin' : ''}`} />
+                    <span>{generatingReport ? 'AI 분석 중...' : 'AI 분석 새로고침'}</span>
+                    <RefreshCw className={`w-4 h-4 ${generatingReport ? 'animate-spin' : ''}`} />
                   </button>
-                  <span className="text-[10px] text-gray-500">최근 데이터 기반 재분석</span>
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="text-xs text-gray-400 font-medium">최근 데이터 기반 재분석</span>
+                    <span className="text-[10px] text-gray-500">AI가 추세·강도·모멘텀을 다시 계산합니다</span>
+                  </div>
                 </div>
               </div>
 
@@ -339,13 +366,20 @@ export default function SymbolDetailPage() {
             ) : (
               <div className="bg-[#15171A] border border-white/5 rounded-lg p-6">
                 <div className="text-center py-8">
-                  <p className="text-gray-400 mb-4">AI 분석 리포트가 없습니다</p>
+                  <Sparkles className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                  <p className="text-gray-400 mb-2 text-lg font-semibold">AI 분석 리포트가 없습니다</p>
+                  <p className="text-gray-500 text-sm mb-6">최근 데이터를 기반으로 AI가 종합 분석을 수행합니다</p>
                   <button
                     onClick={generateAiReport}
-                    className="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors"
+                    disabled={generatingReport}
+                    className={`flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white rounded-lg font-bold transition-all shadow-lg hover:shadow-primary-500/50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed mx-auto ${
+                      generatingReport ? 'animate-pulse' : ''
+                    }`}
                   >
-                    AI 분석 생성하기
+                    <Sparkles className={`w-5 h-5 ${generatingReport ? 'animate-spin' : ''}`} />
+                    <span>{generatingReport ? 'AI 분석 생성 중...' : 'AI 분석 생성하기'}</span>
                   </button>
+                  <p className="text-xs text-gray-500 mt-3">AI가 추세·강도·모멘텀을 분석합니다</p>
                 </div>
               </div>
             )}

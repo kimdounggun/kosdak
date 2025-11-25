@@ -2,24 +2,26 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuthStore } from '@/stores/authStore'
+import { useIsAuthenticated } from '@/stores/authStore'
 import { api } from '@/lib/api'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
 import { BarChart3 } from 'lucide-react'
 
 export default function AiReportsPage() {
   const router = useRouter()
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, isHydrated } = useIsAuthenticated()
   const [reports, setReports] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!isHydrated) return
+
     if (!isAuthenticated) {
       router.push('/login')
       return
     }
     loadReports()
-  }, [])
+  }, [isHydrated, isAuthenticated])
 
   const loadReports = async () => {
     try {
@@ -32,7 +34,15 @@ export default function AiReportsPage() {
     }
   }
 
-  if (!isAuthenticated) return null
+  if (!isHydrated || !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <DashboardLayout>

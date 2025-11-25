@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuthStore } from '@/stores/authStore'
+import { useIsAuthenticated } from '@/stores/authStore'
 import { api } from '@/lib/api'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
 import { Bell, BellOff, Trash2 } from 'lucide-react'
@@ -10,17 +10,19 @@ import toast from 'react-hot-toast'
 
 export default function AlertsPage() {
   const router = useRouter()
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, isHydrated } = useIsAuthenticated()
   const [alerts, setAlerts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!isHydrated) return
+
     if (!isAuthenticated) {
       router.push('/login')
       return
     }
     loadAlerts()
-  }, [])
+  }, [isHydrated, isAuthenticated])
 
   const loadAlerts = async () => {
     try {
@@ -54,7 +56,15 @@ export default function AlertsPage() {
     }
   }
 
-  if (!isAuthenticated) return null
+  if (!isHydrated || !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <DashboardLayout>

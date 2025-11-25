@@ -11,7 +11,8 @@ interface User {
 interface AuthState {
   user: User | null
   token: string | null
-  isAuthenticated: boolean
+  _hasHydrated: boolean
+  setHasHydrated: (state: boolean) => void
   setAuth: (token: string, user: User) => void
   logout: () => void
   login: (email: string, password: string) => Promise<void>
@@ -19,17 +20,21 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
-      isAuthenticated: false,
+      _hasHydrated: false,
+
+      setHasHydrated: (state) => {
+        set({ _hasHydrated: state })
+      },
 
       setAuth: (token, user) => {
-        set({ token, user, isAuthenticated: true })
+        set({ token, user })
       },
 
       logout: () => {
-        set({ token: null, user: null, isAuthenticated: false })
+        set({ token: null, user: null })
       },
 
       login: async (email, password) => {
@@ -44,7 +49,7 @@ export const useAuthStore = create<AuthState>()(
         }
 
         const data = await response.json()
-        set({ token: data.accessToken, user: data.user, isAuthenticated: true })
+        set({ token: data.accessToken, user: data.user })
       },
     }),
     {
@@ -59,7 +64,21 @@ export const useAuthStore = create<AuthState>()(
           removeItem: () => {},
         }
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true)
+      },
     },
   ),
 )
+
+// Computed getter for isAuthenticated
+export const useIsAuthenticated = () => {
+  const { token, user, _hasHydrated } = useAuthStore()
+  return {
+    isAuthenticated: _hasHydrated && !!token && !!user,
+    isHydrated: _hasHydrated,
+    token,
+    user,
+  }
+}
 

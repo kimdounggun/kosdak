@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuthStore } from '@/stores/authStore'
+import { useIsAuthenticated } from '@/stores/authStore'
 import { api } from '@/lib/api'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
 import SymbolCard from '@/components/Dashboard/SymbolCard'
@@ -10,26 +10,20 @@ import { TrendingUp, AlertCircle } from 'lucide-react'
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { isAuthenticated, user, token } = useAuthStore()
+  const { isAuthenticated, isHydrated, user, token } = useIsAuthenticated()
   const [symbols, setSymbols] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
+    if (!isHydrated) return
 
-  useEffect(() => {
-    if (!mounted) return
-
-    // 토큰과 인증 상태 둘 다 확인
     if (!isAuthenticated || !token) {
       router.push('/login')
       return
     }
 
     loadUserSymbols()
-  }, [mounted, isAuthenticated, token])
+  }, [isHydrated, isAuthenticated, token])
 
   const loadUserSymbols = async () => {
     try {
@@ -45,7 +39,7 @@ export default function DashboardPage() {
     }
   }
 
-  if (!mounted || !isAuthenticated || !token) {
+  if (!isHydrated || !isAuthenticated || !token) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">

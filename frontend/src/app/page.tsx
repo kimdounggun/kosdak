@@ -1,31 +1,22 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuthStore } from '@/stores/authStore'
+import { useIsAuthenticated } from '@/stores/authStore'
 
 export default function Home() {
   const router = useRouter()
-  const { isAuthenticated, token } = useAuthStore()
-  const [mounted, setMounted] = useState(false)
+  const { isAuthenticated, isHydrated } = useIsAuthenticated()
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
+    if (!isHydrated) return
 
-  useEffect(() => {
-    if (!mounted) return
-
-    const timer = setTimeout(() => {
-      if (isAuthenticated && token) {
-        router.push('/dashboard')
-      } else {
-        router.push('/login')
-      }
-    }, 100)
-
-    return () => clearTimeout(timer)
-  }, [isAuthenticated, token, mounted, router])
+    if (isAuthenticated) {
+      router.push('/dashboard')
+    } else {
+      router.push('/login')
+    }
+  }, [isAuthenticated, isHydrated, router])
 
   return (
     <div className="flex min-h-screen items-center justify-center">
