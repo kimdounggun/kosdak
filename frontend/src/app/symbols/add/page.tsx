@@ -11,7 +11,10 @@ export default function AddSymbolPage() {
   const router = useRouter()
   const { isAuthenticated, isHydrated } = useIsAuthenticated()
   const [symbols, setSymbols] = useState<any[]>([])
+  const [userSymbols, setUserSymbols] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [logoErrors, setLogoErrors] = useState<Set<string>>(new Set())
+  const [localLogoErrors, setLocalLogoErrors] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!isHydrated) return
@@ -25,8 +28,25 @@ export default function AddSymbolPage() {
 
   const loadSymbols = async () => {
     try {
-      const response = await api.get('/symbols')
-      setSymbols(response.data)
+      const [symbolsResponse, userSymbolsResponse] = await Promise.all([
+        api.get('/symbols'),
+        api.get('/symbols/user/my-symbols')
+      ])
+      
+      const allSymbols = symbolsResponse.data
+      const userSymbolIds = new Set(
+        userSymbolsResponse.data
+          .filter((us: any) => us.symbolId)
+          .map((us: any) => us.symbolId._id.toString())
+      )
+      
+      // 이미 추가된 종목 제외
+      const availableSymbols = allSymbols.filter(
+        (symbol: any) => !userSymbolIds.has(symbol._id.toString())
+      )
+      
+      setSymbols(availableSymbols)
+      setUserSymbols(userSymbolsResponse.data)
     } catch (error) {
       console.error('Failed to load symbols:', error)
       toast.error('종목 목록을 불러오지 못했습니다')
@@ -83,13 +103,53 @@ export default function AddSymbolPage() {
             {symbols.map((symbol) => (
               <div
                 key={symbol._id}
-                className="glass rounded-xl p-6 hover:bg-dark-200 transition cursor-pointer"
+                className="glass rounded-xl p-4 sm:p-6 hover:bg-dark-200 transition cursor-pointer"
                 onClick={() => addSymbol(symbol._id)}
               >
-                <h3 className="text-lg font-bold mb-2">{symbol.name}</h3>
-                <p className="text-sm text-gray-400">
-                  {symbol.code} · {symbol.market}
-                </p>
+                <div className="flex items-center gap-3 mb-4">
+                  {(() => {
+                    const localLogoUrl = symbol.code ? `/logos/${symbol.code}.png` : null
+                    const dbLogoUrl = symbol.logoUrl
+                    const logoUrl = localLogoUrl && !localLogoErrors?.has(symbol._id) 
+                      ? localLogoUrl 
+                      : (dbLogoUrl && !logoErrors.has(symbol._id) ? dbLogoUrl : null)
+                    
+                    return logoUrl ? (
+                      <img 
+                        src={logoUrl} 
+                        alt={symbol.name}
+                        className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg object-contain flex-shrink-0 bg-white/5 p-1"
+                        style={{ 
+                          imageRendering: '-webkit-optimize-contrast',
+                          width: 'auto',
+                          height: 'auto',
+                          maxWidth: '100%',
+                          maxHeight: '100%'
+                        }}
+                        loading="eager"
+                        onError={() => {
+                          if (localLogoUrl && !localLogoErrors?.has(symbol._id)) {
+                            setLocalLogoErrors(prev => new Set(prev).add(symbol._id))
+                          } else if (dbLogoUrl && !logoErrors.has(symbol._id)) {
+                            setLogoErrors(prev => new Set(prev).add(symbol._id))
+                          }
+                        }}
+                      />
+                    ) : (
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary-600 to-primary-700 flex items-center justify-center flex-shrink-0">
+                        <span className="text-white font-bold text-lg sm:text-xl">
+                          {symbol.name.charAt(0)}
+                        </span>
+                      </div>
+                    )
+                  })()}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base sm:text-lg font-bold truncate mb-1">{symbol.name}</h3>
+                    <p className="text-xs sm:text-sm text-gray-400">
+                      {symbol.code} · {symbol.market}
+                    </p>
+                  </div>
+                </div>
                 <div className="mt-4">
                   <button className="w-full py-2 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition">
                     추가하기

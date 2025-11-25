@@ -23,6 +23,9 @@ export class Symbol {
   @Prop()
   description?: string;
 
+  @Prop()
+  logoUrl?: string;
+
   @Prop({ type: Object })
   metadata?: Record<string, any>;
 }

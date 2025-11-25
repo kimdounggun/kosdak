@@ -111,9 +111,13 @@ export class IndicatorsService {
       }
 
       const volumeMAIndex = i - (candles.length - volumeMA.length);
-      if (volumeMAIndex >= 0) {
+      if (volumeMAIndex >= 0 && volumeMA[volumeMAIndex] && volumeMA[volumeMAIndex] > 0) {
         indicator.volumeMA = volumeMA[volumeMAIndex];
         indicator.volumeRatio = candles[i].volume / volumeMA[volumeMAIndex];
+      } else if (volumeMAIndex >= 0) {
+        // volumeMA가 0이거나 없는 경우 기본값 설정
+        indicator.volumeMA = candles[i].volume;
+        indicator.volumeRatio = 1.0;
       }
 
       indicators.push(indicator);

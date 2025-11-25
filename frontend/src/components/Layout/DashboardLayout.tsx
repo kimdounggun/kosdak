@@ -113,7 +113,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="lg:pl-64 bg-[#0D0D0D]">
         {/* Top bar */}
         <header className="bg-[#0D0D0D] sticky top-0 z-30">
-          <div className="flex items-center justify-between p-6">
+          <div className="flex items-center justify-between p-4 sm:p-6">
             <button
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden text-white"

@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
 import SymbolCard from '@/components/Dashboard/SymbolCard'
 import { TrendingUp, AlertCircle } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -39,6 +40,17 @@ export default function DashboardPage() {
     }
   }
 
+  const handleDeleteSymbol = async (userSymbolId: string) => {
+    try {
+      await api.delete(`/symbols/user/symbols/${userSymbolId}`)
+      toast.success('관심종목에서 제거되었습니다')
+      loadUserSymbols() // 목록 새로고침
+    } catch (error: any) {
+      console.error('Failed to delete symbol:', error)
+      toast.error(error.response?.data?.message || '제거 실패')
+    }
+  }
+
   if (!isHydrated || !isAuthenticated || !token) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -51,22 +63,18 @@ export default function DashboardPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <TrendingUp className="w-8 h-8 text-primary-500" />
-              관심종목 대시보드
-            </h1>
-            <p className="text-gray-400 mt-2">
-              {user?.name}님, 환영합니다! 지연 시세 기반으로 실시간 분석을 제공합니다.
+            <p className="text-sm sm:text-base text-gray-400">
+              {user?.name}님, 환영합니다!
             </p>
           </div>
 
           <button
             onClick={() => router.push('/symbols/add')}
-            className="px-6 py-3 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition"
+            className="px-4 sm:px-6 py-2 sm:py-3 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition w-full sm:w-auto text-sm sm:text-base"
           >
             + 종목 추가
           </button>
@@ -110,7 +118,9 @@ export default function DashboardPage() {
               <SymbolCard
                 key={userSymbol._id}
                 symbol={userSymbol.symbolId}
+                userSymbolId={userSymbol._id}
                 onClick={() => router.push(`/symbols/${userSymbol.symbolId._id}`)}
+                onDelete={handleDeleteSymbol}
               />
             ))}
           </div>

@@ -49,5 +49,13 @@ export class SymbolsController {
   async findOne(@Param('id') id: string) {
     return this.symbolsService.findById(id);
   }
+
+  @Post('update-logos')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update logos for all symbols' })
+  async updateLogos() {
+    return this.symbolsService.updateAllLogos();
+  }
 }
 
