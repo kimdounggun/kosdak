@@ -107,7 +107,7 @@ export class AlertsService {
         return false;
       }
 
-      // Check cooldown
+      // Check cooldown3
       if (alert.lastTriggeredAt && alert.cooldownMinutes > 0) {
         const cooldownEnd = new Date(alert.lastTriggeredAt.getTime() + alert.cooldownMinutes * 60000);
         if (new Date() < cooldownEnd) {

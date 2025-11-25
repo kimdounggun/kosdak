@@ -80,7 +80,7 @@ export default function DashboardPage() {
 
         {/* Info Banner */}
         <div className="glass rounded-xl p-4 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-yellow-500 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-yellow-500 shrink-0" />
           <div className="text-sm">
             <p className="text-yellow-500 font-semibold">지연 시세 안내</p>
             <p className="text-gray-400 mt-1">
