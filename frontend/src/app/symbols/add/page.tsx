@@ -79,11 +79,11 @@ export default function AddSymbolPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">종목 추가</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">종목 추가</h1>
           <button
             onClick={() => router.back()}
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+            className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-xs sm:text-sm"
           >
             뒤로가기
           </button>
@@ -151,7 +151,7 @@ export default function AddSymbolPage() {
                   </div>
                 </div>
                 <div className="mt-4">
-                  <button className="w-full py-2 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition">
+                  <button className="w-full py-1.5 sm:py-2 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition text-xs sm:text-sm">
                     추가하기
                   </button>
                 </div>

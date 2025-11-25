@@ -378,11 +378,11 @@ export default function SymbolDetailPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-5 sm:space-y-6">
 
         {/* 상단 헤더 - 가격 정보 (유리 패널) */}
-        <div className="glass-panel rounded-xl p-4 sm:p-6 lg:p-8">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 lg:mb-8">
+        <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-4 mb-5 sm:mb-6 lg:mb-8">
             {(() => {
               const localLogoUrl = symbol?.code ? `/logos/${symbol.code}.png` : null
               const dbLogoUrl = symbol?.logoUrl
@@ -419,17 +419,17 @@ export default function SymbolDetailPage() {
                 </div>
               )
             })()}
-            <div className="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4">
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">{symbol?.name}</h1>
-              <span className="text-sm sm:text-base lg:text-lg text-[#CFCFCF] font-mono font-medium">{symbol?.code} · {symbol?.market}</span>
+            <div className="flex flex-col sm:flex-row sm:items-baseline gap-3 sm:gap-4">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white leading-tight">{symbol?.name}</h1>
+              <span className="text-base sm:text-base lg:text-lg text-[#CFCFCF] font-mono font-medium">{symbol?.code} · {symbol?.market}</span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 lg:gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 sm:gap-6 lg:gap-8">
             <div>
-              <p className="text-sm sm:text-base text-[#CFCFCF] mb-2 font-semibold">종가</p>
-              <div className="flex items-center gap-2 sm:gap-3 mb-2">
-                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">{latestCandle ? latestCandle.close.toLocaleString() : '0'}원</p>
+              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">종가</p>
+              <div className="flex items-center gap-2 sm:gap-3 mb-3">
+                <p className="text-2xl sm:text-2xl lg:text-3xl font-bold text-white">{latestCandle ? latestCandle.close.toLocaleString() : '0'}원</p>
                 {candles && candles.length > 0 && (
                   <Sparkline 
                     data={candles.slice(0, 30).map(c => c.close).reverse()} 
@@ -439,14 +439,14 @@ export default function SymbolDetailPage() {
                   />
                 )}
               </div>
-              <p className={`text-base sm:text-lg font-bold ${priceChange >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+              <p className={`text-lg sm:text-lg font-bold ${priceChange >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                 {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
               </p>
             </div>
             <div>
-              <p className="text-sm sm:text-base text-[#CFCFCF] mb-2 font-semibold">시가</p>
+              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">시가</p>
               <div className="flex items-center gap-2 sm:gap-3">
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white">{latestCandle ? latestCandle.open.toLocaleString() : '0'}원</p>
+                <p className="text-xl sm:text-xl lg:text-2xl font-bold text-white">{latestCandle ? latestCandle.open.toLocaleString() : '0'}원</p>
                 {candles && candles.length > 0 && (
                   <Sparkline 
                     data={candles.slice(0, 30).map(c => c.open).reverse()} 
@@ -458,10 +458,10 @@ export default function SymbolDetailPage() {
               </div>
             </div>
             <div>
-              <p className="text-sm sm:text-base text-[#CFCFCF] mb-2 font-semibold">고가</p>
+              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">고가</p>
               <div className="flex items-center gap-2">
-                <ArrowUp className="w-3 h-3 sm:w-4 sm:h-4 text-[#00E5A8]" />
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-[#00E5A8]">{latestCandle ? latestCandle.high.toLocaleString() : '0'}원</p>
+                <ArrowUp className="w-4 h-4 sm:w-4 sm:h-4 text-[#00E5A8]" />
+                <p className="text-xl sm:text-xl lg:text-2xl font-bold text-[#00E5A8]">{latestCandle ? latestCandle.high.toLocaleString() : '0'}원</p>
                 {candles && candles.length > 0 && (
                   <Sparkline 
                     data={candles.slice(0, 30).map(c => c.high).reverse()} 
@@ -473,10 +473,10 @@ export default function SymbolDetailPage() {
               </div>
             </div>
             <div>
-              <p className="text-sm sm:text-base text-[#CFCFCF] mb-2 font-semibold">저가</p>
+              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">저가</p>
               <div className="flex items-center gap-2">
-                <ArrowDown className="w-3 h-3 sm:w-4 sm:h-4 text-[#FF4D4D]" />
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-[#FF4D4D]">{latestCandle ? latestCandle.low.toLocaleString() : '0'}원</p>
+                <ArrowDown className="w-4 h-4 sm:w-4 sm:h-4 text-[#FF4D4D]" />
+                <p className="text-xl sm:text-xl lg:text-2xl font-bold text-[#FF4D4D]">{latestCandle ? latestCandle.low.toLocaleString() : '0'}원</p>
                 {candles && candles.length > 0 && (
                   <Sparkline 
                     data={candles.slice(0, 30).map(c => c.low).reverse()} 
@@ -488,7 +488,7 @@ export default function SymbolDetailPage() {
               </div>
             </div>
             <div>
-              <p className="text-base text-[#CFCFCF] mb-2 font-semibold">거래량</p>
+              <p className="text-base text-[#CFCFCF] mb-3 font-semibold">거래량</p>
               {latestCandle && candles && candles.length > 0 ? (
                 <VolumeBar 
                   current={latestCandle.volume} 
@@ -503,9 +503,9 @@ export default function SymbolDetailPage() {
         </div>
 
         {/* 3개 핵심 지표 - 상단 강조 (유리 패널) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-          <div className="glass-panel rounded-xl p-4 sm:p-6">
-            <p className="text-sm sm:text-base text-[#CFCFCF] mb-2 sm:mb-3 font-semibold">오늘 추세</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 sm:gap-6">
+          <div className="glass-panel rounded-xl p-5 sm:p-6 text-center sm:text-left">
+            <p className="text-base sm:text-base text-[#CFCFCF] mb-3 sm:mb-3 font-semibold">오늘 추세</p>
             <div className="flex items-center justify-center mb-3 sm:mb-4">
               <div 
                 className="w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center"
@@ -519,26 +519,26 @@ export default function SymbolDetailPage() {
                 </p>
               </div>
             </div>
-            <div className="mt-3 pt-3 border-t border-[rgba(255,255,255,0.05)]">
-              <p className="text-xs sm:text-sm text-[#CFCFCF] font-light">시장 방향성</p>
+            <div className="mt-4 pt-3 border-t border-[rgba(255,255,255,0.05)]">
+              <p className="text-sm sm:text-sm text-[#CFCFCF] font-light">시장 방향성</p>
             </div>
           </div>
-          <div className="glass-panel rounded-xl p-4 sm:p-6">
-            <p className="text-sm sm:text-base text-[#CFCFCF] mb-2 sm:mb-3 font-semibold">종합 강도 점수</p>
-            <div className="flex items-baseline gap-2 mb-2">
+          <div className="glass-panel rounded-xl p-5 sm:p-6 text-center sm:text-left">
+            <p className="text-base sm:text-base text-[#CFCFCF] mb-3 sm:mb-3 font-semibold">종합 강도 점수</p>
+            <div className="flex items-baseline justify-center sm:justify-start gap-2 mb-2">
               <p className="text-3xl sm:text-4xl font-bold text-white tabular-nums">{marketStrength.score}</p>
               <span className="text-base sm:text-lg text-[#CFCFCF] font-light">/ 100</span>
             </div>
-            <div className="mt-3 pt-3 border-t border-[rgba(255,255,255,0.05)]">
-              <p className="text-sm font-semibold" style={{ color: trendColor }}>{marketStrength.direction}</p>
-              <p className="text-xs text-[#CFCFCF] font-light mt-1">변동성: {marketStrength.volatility}</p>
+            <div className="mt-4 pt-3 border-t border-[rgba(255,255,255,0.05)]">
+              <p className="text-base font-semibold" style={{ color: trendColor }}>{marketStrength.direction}</p>
+              <p className="text-sm text-[#CFCFCF] font-light mt-2">변동성: {marketStrength.volatility}</p>
             </div>
           </div>
-          <div className="glass-panel rounded-xl p-4 sm:p-6">
-            <p className="text-sm sm:text-base text-[#CFCFCF] mb-3 sm:mb-4 font-semibold">AI 신뢰도</p>
+          <div className="glass-panel rounded-xl p-5 sm:p-6 text-center sm:text-left">
+            <p className="text-base sm:text-base text-[#CFCFCF] mb-4 sm:mb-4 font-semibold">AI 신뢰도</p>
             {/* 반달형 게이지 - 개선된 버전 */}
-            <div className="relative w-24 h-12 sm:w-28 sm:h-14 mb-2 sm:mb-3">
-              <svg width="112" height="56" viewBox="0 0 112 56" className="overflow-visible">
+            <div className="relative w-24 h-12 sm:w-28 sm:h-14 mb-2 sm:mb-3 mx-auto sm:mx-0 flex items-center justify-center">
+              <svg width="112" height="56" viewBox="0 0 112 56" className="overflow-visible w-full h-full">
                 <defs>
                   <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                     <stop offset="0%" stopColor="#00E5A8" />
@@ -569,38 +569,46 @@ export default function SymbolDetailPage() {
                   strokeLinecap="round"
                   filter="url(#glow)"
                 />
+                {/* 숫자 텍스트 - SVG 내부에 정확히 중앙 배치 */}
+                <text
+                  x="56"
+                  y="28"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  className="text-lg sm:text-xl font-bold fill-white tabular-nums"
+                  style={{ fontSize: '18px' }}
+                >
+                  {confidenceMetrics.confidence}%
+                </text>
               </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-lg sm:text-xl font-bold text-white tabular-nums">{confidenceMetrics.confidence}%</span>
-              </div>
             </div>
-            <p className="text-xs sm:text-base text-[#CFCFCF] mt-1 font-medium">정확도 {confidenceMetrics.accuracy}%</p>
+            <p className="text-sm sm:text-base text-[#CFCFCF] mt-2 font-medium">정확도 {confidenceMetrics.accuracy}%</p>
           </div>
         </div>
 
         {/* 메인 그리드 */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 sm:gap-6">
 
           {/* 좌측 차트 영역 */}
-          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
-            <div className="glass-panel rounded-xl p-4 sm:p-6 lg:p-8">
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4 sm:mb-6">
+          <div className="lg:col-span-2 space-y-5 sm:space-y-6">
+            <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-5 sm:mb-6">
                 <div>
                   <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">현재 시세 분석</h2>
-                  <p className="text-sm sm:text-base text-[#CFCFCF] font-medium">AI가 추세·강도·모멘텀을 실시간 분석합니다</p>
+                  <p className="text-base sm:text-base text-[#CFCFCF] font-medium">AI가 추세·강도·모멘텀을 실시간 분석합니다</p>
                 </div>
                 <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">
                   <button 
                     onClick={generateAiReport}
                     disabled={generatingReport}
-                    className={`flex items-center gap-2 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm sm:text-base lg:text-lg font-bold rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg hover:shadow-blue-500/50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto ${
+                    className={`flex items-center justify-center gap-2 sm:gap-2 px-4 sm:px-6 lg:px-8 py-3 sm:py-3 lg:py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm sm:text-sm lg:text-base font-semibold rounded-lg sm:rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all shadow-md hover:shadow-blue-500/50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto min-h-[44px] ${
                       generatingReport ? 'animate-pulse' : ''
                     }`}
                   >
-                    <Sparkles className={`w-5 h-5 sm:w-6 sm:h-6 ${generatingReport ? 'animate-spin' : ''}`} />
+                    <Sparkles className={`w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 ${generatingReport ? 'animate-spin' : ''}`} />
                     <span className="hidden sm:inline">{generatingReport ? 'AI 분석 중...' : 'AI 분석 새로고침'}</span>
-                    <span className="sm:hidden">{generatingReport ? '분석 중...' : '새로고침'}</span>
-                    <RefreshCw className={`w-4 h-4 sm:w-5 sm:h-5 ${generatingReport ? 'animate-spin' : ''}`} />
+                    <span className="sm:hidden">{generatingReport ? '분석 중' : '새로고침'}</span>
+                    <RefreshCw className={`w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 ${generatingReport ? 'animate-spin' : ''}`} />
                   </button>
                   <div className="hidden sm:flex flex-col items-end gap-1">
                     <span className="text-sm text-[#CFCFCF] font-semibold">최근 데이터 기반 재분석</span>
@@ -648,29 +656,29 @@ export default function SymbolDetailPage() {
 
             {/* AI 분석 리포트 섹션 */}
             {aiReport ? (
-              <div className="glass-panel rounded-xl p-4 sm:p-6 lg:p-8">
-                <div className="flex justify-between items-center mb-4 sm:mb-6">
+              <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8">
+                <div className="flex justify-between items-center mb-5 sm:mb-6">
                   <h2 className="text-xl sm:text-2xl font-bold text-white">AI 분석 리포트</h2>
-                  <span className="text-xs sm:text-base text-[#CFCFCF] font-medium">
+                  <span className="text-sm sm:text-base text-[#CFCFCF] font-medium">
                     {new Date(aiReport.createdAt).toLocaleString('ko-KR')}
                   </span>
                 </div>
                 <AiReportViewer report={aiReport.content || ''} />
               </div>
             ) : (
-              <div className="glass-panel rounded-xl p-8">
-                <div className="text-center py-8">
-                  <Sparkles className="w-16 h-16 text-[#CFCFCF] mx-auto mb-6" />
-                  <p className="text-xl text-white mb-3 font-bold">AI 분석 리포트가 없습니다</p>
-                  <p className="text-base text-[#CFCFCF] mb-8 font-medium">최근 데이터를 기반으로 AI가 종합 분석을 수행합니다</p>
+              <div className="glass-panel rounded-xl p-6 sm:p-8">
+                <div className="text-center py-6 sm:py-8">
+                  <Sparkles className="w-12 h-12 sm:w-16 sm:h-16 text-[#CFCFCF] mx-auto mb-5 sm:mb-6" />
+                  <p className="text-lg sm:text-xl text-white mb-3 font-bold">AI 분석 리포트가 없습니다</p>
+                  <p className="text-base text-[#CFCFCF] mb-6 sm:mb-8 font-medium">최근 데이터를 기반으로 AI가 종합 분석을 수행합니다</p>
                   <button
                     onClick={generateAiReport}
                     disabled={generatingReport}
-                    className={`flex items-center gap-3 px-10 py-4 bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white rounded-xl text-lg font-bold transition-all shadow-lg hover:shadow-primary-500/50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed mx-auto ${
+                    className={`flex items-center justify-center gap-2 sm:gap-3 px-6 sm:px-10 py-3 sm:py-4 bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white rounded-lg sm:rounded-xl text-sm sm:text-base lg:text-lg font-semibold sm:font-bold transition-all shadow-md hover:shadow-primary-500/50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed mx-auto w-full sm:w-auto min-h-[44px] ${
                       generatingReport ? 'animate-pulse' : ''
                     }`}
                   >
-                    <Sparkles className={`w-6 h-6 ${generatingReport ? 'animate-spin' : ''}`} />
+                    <Sparkles className={`w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 ${generatingReport ? 'animate-spin' : ''}`} />
                     <span>{generatingReport ? 'AI 분석 생성 중...' : 'AI 분석 생성하기'}</span>
                   </button>
                   <p className="text-base text-[#CFCFCF] mt-4 font-medium">AI가 추세·강도·모멘텀을 분석합니다</p>
@@ -680,13 +688,13 @@ export default function SymbolDetailPage() {
           </div>
 
           {/* 우측 분석 위젯 패널 - 5개 위젯, 2열 그리드 */}
-          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 auto-rows-min">
+          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 auto-rows-min">
 
                     {/* 1. 시장 시세 분석 (Area Chart + Data Table) */}
-                    <div className="glass-panel rounded-xl p-4 sm:p-6">
+                    <div className="glass-panel rounded-xl p-5 sm:p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-white">시장 시세 분석</h3>
-                <span className="text-sm text-[#CFCFCF] glass-panel px-3 py-1 rounded-lg font-medium">업데이트</span>
+                <span className="text-sm text-[#CFCFCF] glass-panel px-2.5 sm:px-3 py-1 rounded-lg font-medium">업데이트</span>
               </div>
               <div className="text-base text-[#CFCFCF] mb-4 font-semibold">시장 가격 추이</div>
 
@@ -758,10 +766,10 @@ export default function SymbolDetailPage() {
             </div>
 
             {/* 2. 신뢰 조건 & 트렌드 (Donut Chart + Legend) */}
-            <div className="glass-panel rounded-xl p-6">
+            <div className="glass-panel rounded-xl p-5 sm:p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-white">신뢰 조건 & 트렌드</h3>
-                <span className="text-sm text-[#CFCFCF] glass-panel px-3 py-1 rounded-lg font-medium">업데이트</span>
+                <span className="text-sm text-[#CFCFCF] glass-panel px-2.5 sm:px-3 py-1 rounded-lg font-medium">업데이트</span>
               </div>
               <div className="text-base text-[#CFCFCF] mb-4 font-semibold">신호 체제 분석</div>
 
@@ -821,10 +829,10 @@ export default function SymbolDetailPage() {
             </div>
 
             {/* 3. AI 신뢰도 분석 (Area Chart + Table) */}
-            <div className="glass-panel rounded-xl p-6">
+            <div className="glass-panel rounded-xl p-5 sm:p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-white">AI 신뢰도 분석</h3>
-                <span className="text-sm text-[#CFCFCF] glass-panel px-3 py-1 rounded-lg font-medium">업데이트</span>
+                <span className="text-sm text-[#CFCFCF] glass-panel px-2.5 sm:px-3 py-1 rounded-lg font-medium">업데이트</span>
               </div>
               <div className="text-base text-[#CFCFCF] mb-4 font-semibold">AI 신뢰도 분석</div>
 
@@ -890,10 +898,10 @@ export default function SymbolDetailPage() {
             </div>
 
             {/* 4. 시장 강도 지표 (Line Chart + Table) */}
-            <div className="glass-panel rounded-xl p-6">
+            <div className="glass-panel rounded-xl p-5 sm:p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-white">시장 강도 지표</h3>
-                <span className="text-sm text-[#CFCFCF] glass-panel px-3 py-1 rounded-lg font-medium">업데이트</span>
+                <span className="text-sm text-[#CFCFCF] glass-panel px-2.5 sm:px-3 py-1 rounded-lg font-medium">업데이트</span>
               </div>
               <div className="text-base text-[#CFCFCF] mb-4 font-semibold">종합 시장 강도</div>
 
@@ -950,12 +958,12 @@ export default function SymbolDetailPage() {
             </div>
 
             {/* 5. 매수 조건 체크 (Status Indicators) */}
-            <div className="glass-panel rounded-xl p-4 sm:p-6 col-span-1 sm:col-span-2">
+            <div className="glass-panel rounded-xl p-5 sm:p-6 col-span-1 sm:col-span-2">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-base sm:text-lg font-bold text-white">매수 조건 체크</h3>
-                <span className="text-xs sm:text-sm text-[#CFCFCF] glass-panel px-2 sm:px-3 py-1 rounded-lg font-medium">업데이트</span>
+                <span className="text-sm text-[#CFCFCF] glass-panel px-2.5 sm:px-3 py-1 rounded-lg font-medium">업데이트</span>
               </div>
-              <div className="text-sm sm:text-base text-[#CFCFCF] mb-4 sm:mb-6 font-semibold">진입 조건 필터</div>
+              <div className="text-base sm:text-base text-[#CFCFCF] mb-5 sm:mb-6 font-semibold">진입 조건 필터</div>
 
               {/* Status Indicators */}
               <div className="space-y-4">

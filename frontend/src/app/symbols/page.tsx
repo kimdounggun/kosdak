@@ -47,19 +47,19 @@ export default function SymbolsPage() {
     <DashboardLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">전체 종목</h1>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">전체 종목</h1>
           <button
             onClick={() => router.push('/symbols/add')}
-            className="px-6 py-3 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition"
+            className="px-3 sm:px-6 py-2 sm:py-3 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition text-xs sm:text-sm"
           >
             + 관심종목 추가
           </button>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex gap-2 sm:gap-4">
           <button
             onClick={() => setFilter('ALL')}
-            className={`px-4 py-2 rounded-lg transition ${
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition text-xs sm:text-sm ${
               filter === 'ALL' ? 'bg-primary-600' : 'bg-dark-200 hover:bg-dark-100'
             }`}
           >
@@ -67,7 +67,7 @@ export default function SymbolsPage() {
           </button>
           <button
             onClick={() => setFilter('KOSPI')}
-            className={`px-4 py-2 rounded-lg transition ${
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition text-xs sm:text-sm ${
               filter === 'KOSPI' ? 'bg-primary-600' : 'bg-dark-200 hover:bg-dark-100'
             }`}
           >
@@ -75,7 +75,7 @@ export default function SymbolsPage() {
           </button>
           <button
             onClick={() => setFilter('KOSDAQ')}
-            className={`px-4 py-2 rounded-lg transition ${
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition text-xs sm:text-sm ${
               filter === 'KOSDAQ' ? 'bg-primary-600' : 'bg-dark-200 hover:bg-dark-100'
             }`}
           >
