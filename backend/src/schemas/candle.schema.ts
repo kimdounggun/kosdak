@@ -45,3 +45,4 @@ export const CandleSchema = SchemaFactory.createForClass(Candle);
 CandleSchema.index({ symbolId: 1, timeframe: 1, timestamp: -1 });
 CandleSchema.index({ timestamp: -1 });
 
+

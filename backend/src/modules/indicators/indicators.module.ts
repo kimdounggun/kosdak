@@ -18,3 +18,4 @@ import { IndicatorsService } from './indicators.service';
 })
 export class IndicatorsModule {}
 
+

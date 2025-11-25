@@ -21,3 +21,4 @@ export class GenerateReportDto {
   reportType?: string = 'comprehensive';
 }
 
+

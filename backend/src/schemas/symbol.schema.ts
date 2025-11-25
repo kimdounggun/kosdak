@@ -32,3 +32,4 @@ export const SymbolSchema = SchemaFactory.createForClass(Symbol);
 // Create compound index for market and code
 SymbolSchema.index({ market: 1, code: 1 }, { unique: true });
 
+

@@ -26,3 +26,4 @@ export const UserSymbolSchema = SchemaFactory.createForClass(UserSymbol);
 // Create compound index
 UserSymbolSchema.index({ userId: 1, symbolId: 1 }, { unique: true });
 
+
