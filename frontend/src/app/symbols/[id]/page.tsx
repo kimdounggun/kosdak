@@ -6,7 +6,7 @@ import { useIsAuthenticated } from '@/stores/authStore'
 import { api } from '@/lib/api'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
 import toast from 'react-hot-toast'
-import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import AiReportViewer from '@/components/Dashboard/AiReportViewer'
 import { Sparkles, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react'
 
@@ -236,40 +236,60 @@ export default function SymbolDetailPage() {
 
   // Widget 2: 신뢰 조건 & 트렌드 - 인디케이터 기반 신호 체제 계산
   const calculateSignalRegime = () => {
-    if (!indicators || !candles || candles.length === 0) return { bullish: 50, bearish: 50 }
+    if (!indicators || !candles || candles.length === 0) return { 
+      bullish: 50, 
+      bearish: 50, 
+      bullishCount: 0, 
+      totalCount: 0,
+      signals: []
+    }
 
     let bullishSignals = 0
     let totalSignals = 0
+    const signals: Array<{name: string, isBullish: boolean}> = []
 
     if (indicators.rsi !== undefined) {
       totalSignals++
-      if (indicators.rsi > 50) bullishSignals++
+      const isBullish = indicators.rsi > 50
+      if (isBullish) bullishSignals++
+      signals.push({ name: 'RSI', isBullish })
     }
 
     if (indicators.macd !== undefined && indicators.macdSignal !== undefined) {
       totalSignals++
-      if (indicators.macd > indicators.macdSignal) bullishSignals++
+      const isBullish = indicators.macd > indicators.macdSignal
+      if (isBullish) bullishSignals++
+      signals.push({ name: 'MACD', isBullish })
     }
 
     if (indicators.ma20 !== undefined && candles[0]) {
       totalSignals++
-      if (candles[0].close > indicators.ma20) bullishSignals++
+      const isBullish = candles[0].close > indicators.ma20
+      if (isBullish) bullishSignals++
+      signals.push({ name: '20일선', isBullish })
     }
 
     if (indicators.ma5 !== undefined && indicators.ma20 !== undefined) {
       totalSignals++
-      if (indicators.ma5 > indicators.ma20) bullishSignals++
+      const isBullish = indicators.ma5 > indicators.ma20
+      if (isBullish) bullishSignals++
+      signals.push({ name: '정배열', isBullish })
     }
 
     if (indicators.stochK !== undefined) {
       totalSignals++
-      if (indicators.stochK > 50) bullishSignals++
+      const isBullish = indicators.stochK > 50
+      if (isBullish) bullishSignals++
+      signals.push({ name: '스토캐스틱', isBullish })
     }
 
     const bullishPercent = totalSignals > 0 ? (bullishSignals / totalSignals * 100) : 50
     return {
       bullish: Math.round(bullishPercent),
-      bearish: Math.round(100 - bullishPercent)
+      bearish: Math.round(100 - bullishPercent),
+      bullishCount: bullishSignals,
+      totalCount: totalSignals,
+      signals
     }
   }
 
@@ -528,39 +548,39 @@ export default function SymbolDetailPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-5 sm:space-y-6">
+      <div className="space-y-3 sm:space-y-4">
 
         {/* 상단 헤더 - 가격 정보 (유리 패널) */}
-        <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8 relative">
+        <div className="glass-panel rounded-lg p-3 sm:p-4 lg:p-6 relative">
           {/* 20분 지연 워터마크 */}
-          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-[rgba(255,77,77,0.1)] border border-[rgba(255,77,77,0.3)] px-3 py-1.5 rounded-md">
-            <span className="text-xs sm:text-sm text-[#FF4D4D] font-semibold">⏱ 20분 지연 시세</span>
+          <div className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-[rgba(255,77,77,0.1)] border border-[rgba(255,77,77,0.3)] px-2 py-1 rounded">
+            <span className="text-[10px] sm:text-xs text-[#FF4D4D] font-semibold">⏱ 지연</span>
           </div>
-          <div className="flex flex-col gap-3 sm:gap-4 mb-5 sm:mb-6 lg:mb-8">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white leading-tight">{symbol?.name}</h1>
-            <span className="text-base sm:text-base lg:text-lg text-[#CFCFCF] font-mono font-medium">{symbol?.code} · {symbol?.market}</span>
+          <div className="flex flex-col gap-2 mb-3 sm:mb-4">
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-white leading-tight pr-12">{symbol?.name}</h1>
+            <span className="text-xs sm:text-sm text-[#CFCFCF] font-mono">{symbol?.code} · {symbol?.market}</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 sm:gap-6 lg:gap-8">
-            <div>
-              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold flex items-center gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+            <div className="col-span-2 sm:col-span-1">
+              <p className="text-xs sm:text-sm text-[#CFCFCF] mb-1.5 font-semibold flex items-center gap-1">
                 현재가
-                <span className="text-xs bg-[rgba(255,77,77,0.1)] text-[#FF4D4D] px-2 py-0.5 rounded">지연</span>
               </p>
-              <div className="flex items-center gap-2 sm:gap-3 mb-3">
-                <p className="text-2xl sm:text-2xl lg:text-3xl font-bold text-white">
-                  {symbol?.currentPrice ? symbol.currentPrice.toLocaleString() : (latestCandle ? latestCandle.close.toLocaleString() : '0')}원
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <p className="text-xl sm:text-2xl font-bold text-white">
+                  {symbol?.currentPrice ? symbol.currentPrice.toLocaleString() : (latestCandle ? latestCandle.close.toLocaleString() : '0')}
+                  <span className="text-xs ml-0.5">원</span>
                 </p>
                 {candles && candles.length > 0 && (
                   <Sparkline 
                     data={candles.slice(0, 30).map(c => c.close).reverse()} 
                     color={priceChange >= 0 ? '#00E5A8' : '#FF4D4D'}
-                    width={60}
-                    height={30}
+                    width={40}
+                    height={20}
                   />
                 )}
               </div>
-              <p className={`text-lg sm:text-lg font-bold ${
+              <p className={`text-sm sm:text-base font-bold ${
                 (symbol?.priceChangePercent ?? priceChange) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'
               }`}>
                 {(symbol?.priceChangePercent ?? priceChange) >= 0 ? '+' : ''}
@@ -568,65 +588,42 @@ export default function SymbolDetailPage() {
               </p>
             </div>
             <div>
-              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">시가</p>
-              <div className="flex items-center gap-2 sm:gap-3">
-                <p className="text-xl sm:text-xl lg:text-2xl font-bold text-white">
-                  {symbol?.dayOpen ? symbol.dayOpen.toLocaleString() : (latestCandle ? latestCandle.open.toLocaleString() : '0')}원
+              <p className="text-xs sm:text-sm text-[#CFCFCF] mb-1.5 font-semibold">시가</p>
+              <div className="flex items-center gap-1">
+                <p className="text-sm sm:text-base font-bold text-white truncate">
+                  {symbol?.dayOpen ? symbol.dayOpen.toLocaleString() : (latestCandle ? latestCandle.open.toLocaleString() : '0')}
                 </p>
-                {candles && candles.length > 0 && (
-                  <Sparkline 
-                    data={candles.slice(0, 30).map(c => c.open).reverse()} 
-                    color="#CFCFCF" 
-                    width={50}
-                    height={25}
-                  />
-                )}
               </div>
             </div>
             <div>
-              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">고가 <span className="text-xs text-[#00E5A8]">(당일)</span></p>
-              <div className="flex items-center gap-2">
-                <ArrowUp className="w-4 h-4 sm:w-4 sm:h-4 text-[#00E5A8]" />
-                <p className="text-xl sm:text-xl lg:text-2xl font-bold text-[#00E5A8]">
-                  {symbol?.dayHigh ? symbol.dayHigh.toLocaleString() : (latestCandle ? latestCandle.high.toLocaleString() : '0')}원
+              <p className="text-xs sm:text-sm text-[#CFCFCF] mb-1.5 font-semibold">고가</p>
+              <div className="flex items-center gap-1">
+                <ArrowUp className="w-3 h-3 text-[#00E5A8]" />
+                <p className="text-sm sm:text-base font-bold text-[#00E5A8] truncate">
+                  {symbol?.dayHigh ? symbol.dayHigh.toLocaleString() : (latestCandle ? latestCandle.high.toLocaleString() : '0')}
                 </p>
-                {candles && candles.length > 0 && (
-                  <Sparkline 
-                    data={candles.slice(0, 30).map(c => c.high).reverse()} 
-                    color="#00E5A8" 
-                    width={50}
-                    height={25}
-                  />
-                )}
               </div>
             </div>
             <div>
-              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">저가 <span className="text-xs text-[#FF4D4D]">(당일)</span></p>
-              <div className="flex items-center gap-2">
-                <ArrowDown className="w-4 h-4 sm:w-4 sm:h-4 text-[#FF4D4D]" />
-                <p className="text-xl sm:text-xl lg:text-2xl font-bold text-[#FF4D4D]">
-                  {symbol?.dayLow ? symbol.dayLow.toLocaleString() : (latestCandle ? latestCandle.low.toLocaleString() : '0')}원
+              <p className="text-xs sm:text-sm text-[#CFCFCF] mb-1.5 font-semibold">저가</p>
+              <div className="flex items-center gap-1">
+                <ArrowDown className="w-3 h-3 text-[#FF4D4D]" />
+                <p className="text-sm sm:text-base font-bold text-[#FF4D4D] truncate">
+                  {symbol?.dayLow ? symbol.dayLow.toLocaleString() : (latestCandle ? latestCandle.low.toLocaleString() : '0')}
                 </p>
-                {candles && candles.length > 0 && (
-                  <Sparkline 
-                    data={candles.slice(0, 30).map(c => c.low).reverse()} 
-                    color="#FF4D4D" 
-                    width={50}
-                    height={25}
-                  />
-                )}
               </div>
             </div>
             <div>
-              <p className="text-base text-[#CFCFCF] mb-3 font-semibold">거래량</p>
+              <p className="text-xs sm:text-sm text-[#CFCFCF] mb-1.5 font-semibold">거래량</p>
               {(symbol?.volume || latestCandle) && candles && candles.length > 0 ? (
                 <VolumeBar 
                   current={symbol?.volume || latestCandle.volume} 
                   max={Math.max(...candles.slice(0, 20).map(c => c.volume), symbol?.volume || latestCandle.volume)} 
-                  width={140}
+                  width={80}
+                  height={6}
                 />
               ) : (
-                <span className="text-base text-[#CFCFCF]">0</span>
+                <span className="text-xs text-[#CFCFCF]">0</span>
               )}
             </div>
           </div>
@@ -634,32 +631,32 @@ export default function SymbolDetailPage() {
 
         {/* AI 종합 판단 */}
         <div 
-          className="glass-panel rounded-xl p-6 sm:p-8 border-l-4"
+          className="glass-panel rounded-lg p-3 sm:p-4 lg:p-6 border-l-4"
           style={{ borderLeftColor: aiConclusion.actionColor }}
         >
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4">
             {/* AI 판단 */}
             <div className="lg:col-span-1">
-              <p className="text-sm text-[#CFCFCF] mb-2">AI 종합 판단</p>
-              <p className="text-3xl font-bold mb-3" style={{ color: aiConclusion.actionColor }}>
+              <p className="text-xs sm:text-sm text-[#CFCFCF] mb-1">AI 종합 판단</p>
+              <p className="text-xl sm:text-2xl font-bold mb-2" style={{ color: aiConclusion.actionColor }}>
                 {aiConclusion.action}
               </p>
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-1.5 text-xs sm:text-sm">
                 <span className="text-[#CFCFCF]">신뢰도</span>
                 <span className="text-white font-semibold">{confidenceMetrics.confidence}%</span>
                 <span className="text-[#CFCFCF]">
-                  {confidenceMetrics.confidence >= 80 ? '(높음)' : 
-                   confidenceMetrics.confidence >= 60 ? '(보통)' : '(낮음)'}
+                  {confidenceMetrics.confidence >= 80 ? '높음' : 
+                   confidenceMetrics.confidence >= 60 ? '보통' : '낮음'}
                 </span>
               </div>
             </div>
 
             {/* 핵심 정보 */}
-            <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 grid grid-cols-3 gap-2 sm:gap-3">
               <div>
-                <p className="text-xs text-[#CFCFCF] mb-2">오늘 추세</p>
+                <p className="text-[10px] sm:text-xs text-[#CFCFCF] mb-1">추세</p>
                 <div 
-                  className="inline-flex px-3 py-1 rounded-full text-sm font-semibold"
+                  className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold"
                   style={{ 
                     backgroundColor: trendColor === '#00E5A8' ? 'rgba(0, 229, 168, 0.15)' : 
                                      trendColor === '#FF4D4D' ? 'rgba(255, 77, 77, 0.15)' : 'rgba(207, 207, 207, 0.15)',
@@ -668,50 +665,43 @@ export default function SymbolDetailPage() {
                 >
                   {trendDirection === '상승 추세' ? '상승' : trendDirection === '하락 추세' ? '하락' : '중립'}
                 </div>
-                <p className="text-xs text-[#CFCFCF] mt-2">RSI·MACD 기준</p>
               </div>
               
               <div>
-                <p className="text-xs text-[#CFCFCF] mb-2">매수세 강도</p>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-white">{marketStrength.score}</span>
-                  <span className="text-sm text-[#CFCFCF]">/ 100</span>
+                <p className="text-[10px] sm:text-xs text-[#CFCFCF] mb-1">강도</p>
+                <div className="flex items-baseline gap-0.5">
+                  <span className="text-lg sm:text-xl font-bold text-white">{marketStrength.score}</span>
+                  <span className="text-[10px] text-[#CFCFCF]">/100</span>
                 </div>
-                <p className="text-xs text-[#CFCFCF] mt-2">
-                  {Number(marketStrength.score) >= 70 ? '강세' : 
-                   Number(marketStrength.score) >= 50 ? '우위' : 
-                   Number(marketStrength.score) >= 30 ? '균형' : '약세'}
-                </p>
               </div>
               
               <div>
-                <p className="text-xs text-[#CFCFCF] mb-2">리스크</p>
-                <p className="text-lg font-semibold" style={{ 
+                <p className="text-[10px] sm:text-xs text-[#CFCFCF] mb-1">리스크</p>
+                <p className="text-sm sm:text-base font-semibold" style={{ 
                   color: aiConclusion.riskLevel === 'low' ? '#00E5A8' : 
                          aiConclusion.riskLevel === 'high' || aiConclusion.riskLevel === 'very-high' ? '#FF4D4D' : '#CFCFCF' 
                 }}>
                   {aiConclusion.risk}
                 </p>
-                <p className="text-xs text-[#CFCFCF] mt-2">변동성 {marketStrength.volatility}</p>
               </div>
             </div>
 
             {/* 추천 행동 */}
-            <div className="lg:col-span-1 bg-[rgba(255,255,255,0.03)] rounded-lg p-4">
-              <p className="text-xs text-[#CFCFCF] mb-2">추천 행동</p>
-              <p className="text-sm text-white font-medium leading-relaxed">{aiConclusion.recommendation}</p>
+            <div className="lg:col-span-1 bg-[rgba(255,255,255,0.03)] rounded-lg p-2.5 sm:p-3">
+              <p className="text-[10px] sm:text-xs text-[#CFCFCF] mb-1">추천</p>
+              <p className="text-xs sm:text-sm text-white font-medium leading-relaxed">{aiConclusion.recommendation}</p>
             </div>
           </div>
 
           {/* 판단 근거 */}
           {aiConclusion.reasons.length > 0 && (
-            <div className="mt-6 pt-4 border-t border-[rgba(255,255,255,0.05)]">
-              <p className="text-xs text-[#CFCFCF] mb-3">판단 근거</p>
-              <div className="flex flex-wrap gap-2">
+            <div className="mt-3 sm:mt-4 pt-3 border-t border-[rgba(255,255,255,0.05)]">
+              <p className="text-[10px] sm:text-xs text-[#CFCFCF] mb-2">판단 근거</p>
+              <div className="flex flex-wrap gap-1.5 sm:gap-2">
                 {aiConclusion.reasons.map((reason, idx) => (
                   <span 
                     key={idx}
-                    className="text-xs bg-[rgba(255,255,255,0.05)] text-[#CFCFCF] px-3 py-1.5 rounded-md border border-[rgba(255,255,255,0.05)]"
+                    className="text-[10px] sm:text-xs bg-[rgba(255,255,255,0.05)] text-[#CFCFCF] px-2 py-1 rounded border border-[rgba(255,255,255,0.05)]"
                   >
                     {reason}
                   </span>
@@ -722,19 +712,19 @@ export default function SymbolDetailPage() {
         </div>
 
         {/* 지연 시세 안내 문구 */}
-        <div className="glass-panel rounded-xl p-4 sm:p-5 bg-gradient-to-r from-[rgba(0,229,168,0.05)] to-[rgba(0,209,255,0.05)] border border-[rgba(0,229,168,0.2)]">
-          <div className="flex items-start gap-3">
+        <div className="glass-panel rounded-lg p-2.5 sm:p-3 bg-gradient-to-r from-[rgba(0,229,168,0.05)] to-[rgba(0,209,255,0.05)] border border-[rgba(0,229,168,0.2)]">
+          <div className="flex items-start gap-2">
             <div className="flex-shrink-0 mt-0.5">
-              <svg className="w-5 h-5 text-[#00E5A8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-[#00E5A8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
             <div className="flex-1">
-              <p className="text-sm text-[#00E5A8] font-semibold mb-1">시세 데이터 안내</p>
-              <p className="text-xs sm:text-sm text-[#CFCFCF] leading-relaxed">
-                시세 데이터는 KRX 정책에 따라 <span className="text-white font-semibold">20분 지연</span> 기준입니다.
-                <span className="block mt-1 text-[#00E5A8]">
-                  ✓ AI 분석, 추세 판단, 시나리오 전략 등에는 실시간 데이터와 비교해 영향이 없습니다.
+              <p className="text-xs sm:text-sm text-[#00E5A8] font-semibold mb-0.5">시세 데이터 안내</p>
+              <p className="text-[10px] sm:text-xs text-[#CFCFCF] leading-relaxed">
+                시세는 <span className="text-white font-semibold">20분 지연</span> 기준입니다.
+                <span className="block mt-0.5 text-[#00E5A8]">
+                  ✓ AI 분석·추세 판단에는 영향 없음
                 </span>
               </p>
             </div>
@@ -742,37 +732,30 @@ export default function SymbolDetailPage() {
         </div>
 
         {/* 메인 그리드 */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 sm:gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4">
 
           {/* 좌측 차트 영역 */}
-          <div className="lg:col-span-2 space-y-5 sm:space-y-6">
-            <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8">
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-5 sm:mb-6">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">현재 시세 분석</h2>
-                  <p className="text-base sm:text-base text-[#CFCFCF] font-medium">AI가 추세·강도·모멘텀을 실시간 분석합니다</p>
-                </div>
-                <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">
+          <div className="lg:col-span-2 space-y-3 sm:space-y-4">
+            <div className="glass-panel rounded-lg p-3 sm:p-4">
+              <div className="flex flex-col gap-2 mb-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base sm:text-lg font-bold text-white">현재 시세 분석</h2>
                   <button 
                     onClick={generateAiReport}
                     disabled={generatingReport}
-                    className={`flex items-center justify-center gap-2 sm:gap-2 px-4 sm:px-6 lg:px-8 py-3 sm:py-3 lg:py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm sm:text-sm lg:text-base font-semibold rounded-lg sm:rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all shadow-md hover:shadow-blue-500/50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto min-h-[44px] ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-xs font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
                       generatingReport ? 'animate-pulse' : ''
                     }`}
                   >
-                    <Sparkles className={`w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 ${generatingReport ? 'animate-spin' : ''}`} />
-                    <span className="hidden sm:inline">{generatingReport ? 'AI 분석 중...' : 'AI 분석 새로고침'}</span>
-                    <span className="sm:hidden">{generatingReport ? '분석 중' : '새로고침'}</span>
-                    <RefreshCw className={`w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 ${generatingReport ? 'animate-spin' : ''}`} />
+                    <Sparkles className={`w-3.5 h-3.5 ${generatingReport ? 'animate-spin' : ''}`} />
+                    <span className="hidden sm:inline">{generatingReport ? '분석 중' : 'AI 분석'}</span>
+                    <span className="sm:hidden">AI분석</span>
                   </button>
-                  <div className="hidden sm:flex flex-col items-end gap-1">
-                    <span className="text-sm text-[#CFCFCF] font-semibold">최근 데이터 기반 재분석</span>
-                    <span className="text-xs text-[#CFCFCF] font-medium">AI가 추세·강도·모멘텀을 다시 계산합니다</span>
-                  </div>
                 </div>
+                <p className="text-[10px] sm:text-xs text-[#CFCFCF]">AI가 추세·강도·모멘텀 분석</p>
               </div>
 
-              <div className="h-64 sm:h-80 lg:h-96">
+              <div className="h-48 sm:h-64">
                 {trendData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -1007,15 +990,14 @@ export default function SymbolDetailPage() {
           </div>
 
           {/* 우측 분석 위젯 패널 - 5개 위젯, 2열 그리드 */}
-          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 auto-rows-min">
+          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 auto-rows-min">
 
                     {/* 1. 시장 시세 분석 (Area Chart + Data Table) */}
-                    <div className="glass-panel rounded-xl p-5 sm:p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-white">시장 시세 분석</h3>
-                <span className="text-sm text-[#CFCFCF] glass-panel px-2.5 sm:px-3 py-1 rounded-lg font-medium">업데이트</span>
+                    <div className="glass-panel rounded-lg p-3 sm:p-4">
+              <div className="mb-2">
+                <h3 className="text-sm sm:text-base font-bold text-white">시장 시세</h3>
               </div>
-              <div className="text-base text-[#CFCFCF] mb-4 font-semibold">시장 가격 추이</div>
+              <div className="text-xs sm:text-sm text-[#CFCFCF] mb-3 font-semibold">가격 추이</div>
 
               {/* Area Chart */}
               <div className="mb-4">
@@ -1047,113 +1029,122 @@ export default function SymbolDetailPage() {
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="flex items-center justify-center h-[120px] text-[#CFCFCF] text-sm">
+                  <div className="flex items-center justify-center h-[80px] text-[#CFCFCF] text-xs">
                     데이터 없음
                   </div>
                 )}
               </div>
 
               {/* Data Table - 기간별 변화율 */}
-              <div className="space-y-2 text-base">
-                <div className="grid grid-cols-3 gap-3 pb-2 border-b border-[rgba(255,255,255,0.05)]">
+              <div className="space-y-1.5 text-xs sm:text-sm">
+                <div className="grid grid-cols-3 gap-2 pb-1.5 border-b border-[rgba(255,255,255,0.05)]">
                   <span className="text-[#CFCFCF] font-semibold text-left">기간</span>
-                  <span className="text-[#CFCFCF] font-semibold text-right">당시 가격</span>
-                  <span className="text-[#CFCFCF] font-semibold text-right">변화율</span>
+                  <span className="text-[#CFCFCF] font-semibold text-right">당시</span>
+                  <span className="text-[#CFCFCF] font-semibold text-right">변화</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
-                  <span className="text-[#CFCFCF] font-light text-left">15분 전</span>
-                  <span className="text-white font-semibold text-right tabular-nums">{historicalChanges.min15Price?.toLocaleString() || '-'}</span>
-                  <span className={`text-right font-semibold tabular-nums ${Number(historicalChanges.min15) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                <div className="grid grid-cols-3 gap-2 py-0.5 border-b border-[rgba(255,255,255,0.03)]">
+                  <span className="text-[#CFCFCF] font-light text-left">15분</span>
+                  <span className="text-white font-semibold text-right tabular-nums text-[10px] sm:text-xs">{historicalChanges.min15Price?.toLocaleString() || '-'}</span>
+                  <span className={`text-right font-semibold tabular-nums text-[10px] sm:text-xs ${Number(historicalChanges.min15) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                     {Number(historicalChanges.min15) >= 0 ? '+' : ''}{historicalChanges.min15}%
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
-                  <span className="text-[#CFCFCF] font-light text-left">1시간 전</span>
-                  <span className="text-white font-semibold text-right tabular-nums">{historicalChanges.hour1Price?.toLocaleString() || '-'}</span>
-                  <span className={`text-right font-semibold tabular-nums ${Number(historicalChanges.hour1) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                <div className="grid grid-cols-3 gap-2 py-0.5 border-b border-[rgba(255,255,255,0.03)]">
+                  <span className="text-[#CFCFCF] font-light text-left">1시간</span>
+                  <span className="text-white font-semibold text-right tabular-nums text-[10px] sm:text-xs">{historicalChanges.hour1Price?.toLocaleString() || '-'}</span>
+                  <span className={`text-right font-semibold tabular-nums text-[10px] sm:text-xs ${Number(historicalChanges.hour1) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                     {Number(historicalChanges.hour1) >= 0 ? '+' : ''}{historicalChanges.hour1}%
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-3 py-1">
-                  <span className="text-[#CFCFCF] font-light text-left">4시간 전</span>
-                  <span className="text-white font-semibold text-right tabular-nums">{historicalChanges.hour4Price?.toLocaleString() || '-'}</span>
-                  <span className={`text-right font-semibold tabular-nums ${Number(historicalChanges.hour4) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                <div className="grid grid-cols-3 gap-2 py-0.5">
+                  <span className="text-[#CFCFCF] font-light text-left">4시간</span>
+                  <span className="text-white font-semibold text-right tabular-nums text-[10px] sm:text-xs">{historicalChanges.hour4Price?.toLocaleString() || '-'}</span>
+                  <span className={`text-right font-semibold tabular-nums text-[10px] sm:text-xs ${Number(historicalChanges.hour4) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                     {Number(historicalChanges.hour4) >= 0 ? '+' : ''}{historicalChanges.hour4}%
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* 2. 신뢰 조건 & 트렌드 (Donut Chart + Legend) */}
-            <div className="glass-panel rounded-xl p-5 sm:p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-white">신뢰 조건 & 트렌드</h3>
-                <span className="text-sm text-[#CFCFCF] glass-panel px-2.5 sm:px-3 py-1 rounded-lg font-medium">업데이트</span>
+            {/* 2. 기술적 신호 분석 */}
+            <div className="glass-panel rounded-lg p-3 sm:p-4">
+              <div className="mb-3">
+                <h3 className="text-sm sm:text-base font-bold text-white">기술적 신호</h3>
               </div>
-              <div className="text-base text-[#CFCFCF] mb-4 font-semibold">신호 체제 분석</div>
-
-              {/* Donut Chart - 샤프한 스타일 */}
-              <div className="flex items-center justify-center h-36 mb-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <defs>
-                      <linearGradient id="bullishGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#00E5A8" />
-                        <stop offset="100%" stopColor="#00D1FF" />
-                      </linearGradient>
-                    </defs>
-                    <Pie
-                      data={[{ value: signalRegime.bullish }, { value: signalRegime.bearish }]}
-                      dataKey="value"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={45}
-                      outerRadius={65}
-                      startAngle={90}
-                      endAngle={450}
-                      animationDuration={800}
-                    >
-                      <Cell 
-                        fill={signalRegime.bullish > 50 ? 'url(#bullishGrad)' : 'rgba(207,207,207,0.2)'} 
-                        stroke={signalRegime.bullish > 50 ? '#00E5A8' : 'rgba(255,255,255,0.1)'}
-                        strokeWidth={1}
-                      />
-                      <Cell 
-                        fill={signalRegime.bearish > 50 ? '#FF4D4D' : 'rgba(207,207,207,0.2)'} 
-                        stroke={signalRegime.bearish > 50 ? '#FF4D4D' : 'rgba(255,255,255,0.1)'}
-                        strokeWidth={1}
-                      />
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
+              
+              {/* 메인 결과 */}
+              <div className="mb-4 p-3 rounded-lg border" style={{
+                backgroundColor: signalRegime.bullishCount >= signalRegime.totalCount * 0.8 
+                  ? 'rgba(0, 229, 168, 0.1)' 
+                  : signalRegime.bullishCount >= signalRegime.totalCount * 0.6
+                  ? 'rgba(0, 209, 255, 0.1)'
+                  : signalRegime.bullishCount >= signalRegime.totalCount * 0.4
+                  ? 'rgba(207, 207, 207, 0.1)'
+                  : 'rgba(255, 77, 77, 0.1)',
+                borderColor: signalRegime.bullishCount >= signalRegime.totalCount * 0.8 
+                  ? 'rgba(0, 229, 168, 0.3)' 
+                  : signalRegime.bullishCount >= signalRegime.totalCount * 0.6
+                  ? 'rgba(0, 209, 255, 0.3)'
+                  : signalRegime.bullishCount >= signalRegime.totalCount * 0.4
+                  ? 'rgba(207, 207, 207, 0.3)'
+                  : 'rgba(255, 77, 77, 0.3)'
+              }}>
+                <div className="flex items-baseline justify-between mb-2">
+                  <span className="text-xs text-[#CFCFCF]">
+                    {signalRegime.totalCount}개 지표 중
+                  </span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-2xl sm:text-3xl font-bold tabular-nums" style={{
+                      color: signalRegime.bullishCount >= signalRegime.totalCount * 0.6 
+                        ? '#00E5A8' 
+                        : signalRegime.bullishCount >= signalRegime.totalCount * 0.4
+                        ? '#CFCFCF'
+                        : '#FF4D4D'
+                    }}>
+                      {signalRegime.bullishCount}
+                    </span>
+                    <span className="text-sm text-[#CFCFCF]">개</span>
+                  </div>
+                </div>
+                <div className="text-xs sm:text-sm font-bold text-right" style={{
+                  color: signalRegime.bullishCount >= signalRegime.totalCount * 0.8
+                    ? '#00E5A8'
+                    : signalRegime.bullishCount >= signalRegime.totalCount * 0.6
+                    ? '#00D1FF'
+                    : signalRegime.bullishCount >= signalRegime.totalCount * 0.4
+                    ? '#CFCFCF'
+                    : '#FF4D4D'
+                }}>
+                  {signalRegime.bullishCount >= signalRegime.totalCount * 0.8 ? '강력 매수 신호' :
+                   signalRegime.bullishCount >= signalRegime.totalCount * 0.6 ? '매수 신호 우세' :
+                   signalRegime.bullishCount >= signalRegime.totalCount * 0.4 ? '중립 신호' :
+                   '매도 신호 우세'}
+                </div>
               </div>
 
-              {/* Legend - 얇은 라인 구분 */}
-              <div className="space-y-2 text-base">
-                <div className="flex items-center justify-between py-2 border-b border-[rgba(255,255,255,0.05)]">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-sm bg-[#00E5A8]" style={{ boxShadow: '0 0 6px rgba(0, 229, 168, 0.5)' }}></div>
-                    <span className="text-[#CFCFCF] font-light">강세 신호</span>
+              {/* 지표별 상세 */}
+              <div className="space-y-2">
+                {signalRegime.signals.map((signal, idx) => (
+                  <div key={idx} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                    <span className="text-xs sm:text-sm text-[#CFCFCF]">{signal.name}</span>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${signal.isBullish ? 'bg-[#00E5A8]' : 'bg-[#FF4D4D]'}`} 
+                           style={{ boxShadow: signal.isBullish ? '0 0 6px rgba(0, 229, 168, 0.5)' : '0 0 6px rgba(255, 77, 77, 0.5)' }}></div>
+                      <span className={`font-bold text-xs sm:text-sm min-w-[32px] text-right ${signal.isBullish ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                        {signal.isBullish ? '매수' : '매도'}
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-[#00E5A8] font-semibold text-lg tabular-nums">{signalRegime.bullish}%</span>
-                </div>
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-sm bg-[#CFCFCF]"></div>
-                    <span className="text-[#CFCFCF] font-light">중립/약세</span>
-                  </div>
-                  <span className="text-[#CFCFCF] font-semibold text-lg tabular-nums">{signalRegime.bearish}%</span>
-                </div>
+                ))}
               </div>
             </div>
 
             {/* 3. AI 신뢰도 분석 (Area Chart + Table) */}
-            <div className="glass-panel rounded-xl p-5 sm:p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-white">AI 신뢰도 분석</h3>
-                <span className="text-sm text-[#CFCFCF] glass-panel px-2.5 sm:px-3 py-1 rounded-lg font-medium">업데이트</span>
+            <div className="glass-panel rounded-lg p-3 sm:p-4">
+              <div className="mb-2">
+                <h3 className="text-sm sm:text-base font-bold text-white">AI 신뢰도</h3>
               </div>
-              <div className="text-base text-[#CFCFCF] mb-4 font-semibold">AI 신뢰도 분석</div>
+              <div className="text-xs sm:text-sm text-[#CFCFCF] mb-3 font-semibold">신뢰도 분석</div>
 
               {/* Area Chart */}
               <div className="mb-4">
@@ -1217,12 +1208,11 @@ export default function SymbolDetailPage() {
             </div>
 
             {/* 4. 시장 강도 지표 (Line Chart + Table) */}
-            <div className="glass-panel rounded-xl p-5 sm:p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-white">시장 강도 지표</h3>
-                <span className="text-sm text-[#CFCFCF] glass-panel px-2.5 sm:px-3 py-1 rounded-lg font-medium">업데이트</span>
+            <div className="glass-panel rounded-lg p-3 sm:p-4">
+              <div className="mb-2">
+                <h3 className="text-sm sm:text-base font-bold text-white">시장 강도</h3>
               </div>
-              <div className="text-base text-[#CFCFCF] mb-4 font-semibold">종합 시장 강도</div>
+              <div className="text-xs sm:text-sm text-[#CFCFCF] mb-3 font-semibold">강도 지표</div>
 
               {/* Line Chart */}
               <div className="mb-4">
@@ -1277,41 +1267,40 @@ export default function SymbolDetailPage() {
             </div>
 
             {/* 5. 매수 조건 체크 (Status Indicators) */}
-            <div className="glass-panel rounded-xl p-5 sm:p-6 col-span-1 sm:col-span-2">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-base sm:text-lg font-bold text-white">매수 조건 체크</h3>
-                <span className="text-sm text-[#CFCFCF] glass-panel px-2.5 sm:px-3 py-1 rounded-lg font-medium">업데이트</span>
+            <div className="glass-panel rounded-lg p-3 sm:p-4 col-span-1 sm:col-span-2">
+              <div className="mb-2">
+                <h3 className="text-sm sm:text-base font-bold text-white">매수 조건</h3>
               </div>
-              <div className="text-base sm:text-base text-[#CFCFCF] mb-5 sm:mb-6 font-semibold">진입 조건 필터</div>
+              <div className="text-xs sm:text-sm text-[#CFCFCF] mb-3 font-semibold">진입 조건</div>
 
               {/* Status Indicators */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between py-3 border-b border-white/10">
-                  <span className="text-base text-[#CFCFCF] font-semibold">모멘텀 조건</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full shadow-lg" style={{ backgroundColor: entryConditions.momentum.color, boxShadow: `0 0 12px ${entryConditions.momentum.color}80` }}></div>
-                    <span className="text-base font-bold" style={{ color: entryConditions.momentum.color }}>{entryConditions.momentum.status}</span>
+              <div className="space-y-2 sm:space-y-3">
+                <div className="flex items-center justify-between py-2 border-b border-white/10">
+                  <span className="text-xs sm:text-sm text-[#CFCFCF] font-semibold">모멘텀</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full" style={{ backgroundColor: entryConditions.momentum.color }}></div>
+                    <span className="text-xs sm:text-sm font-bold" style={{ color: entryConditions.momentum.color }}>{entryConditions.momentum.status}</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between py-3 border-b border-white/10">
-                  <span className="text-base text-[#CFCFCF] font-semibold">변동성 조건</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full shadow-lg" style={{ backgroundColor: entryConditions.volatility.color, boxShadow: `0 0 12px ${entryConditions.volatility.color}80` }}></div>
-                    <span className="text-base font-bold" style={{ color: entryConditions.volatility.color }}>{entryConditions.volatility.status}</span>
+                <div className="flex items-center justify-between py-2 border-b border-white/10">
+                  <span className="text-xs sm:text-sm text-[#CFCFCF] font-semibold">변동성</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full" style={{ backgroundColor: entryConditions.volatility.color }}></div>
+                    <span className="text-xs sm:text-sm font-bold" style={{ color: entryConditions.volatility.color }}>{entryConditions.volatility.status}</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between py-3 border-b border-white/10">
-                  <span className="text-base text-[#CFCFCF] font-semibold">거래량 조건</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full shadow-lg" style={{ backgroundColor: entryConditions.volume.color, boxShadow: `0 0 12px ${entryConditions.volume.color}80` }}></div>
-                    <span className="text-base font-bold" style={{ color: entryConditions.volume.color }}>{entryConditions.volume.status}</span>
+                <div className="flex items-center justify-between py-2 border-b border-white/10">
+                  <span className="text-xs sm:text-sm text-[#CFCFCF] font-semibold">거래량</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full" style={{ backgroundColor: entryConditions.volume.color }}></div>
+                    <span className="text-xs sm:text-sm font-bold" style={{ color: entryConditions.volume.color }}>{entryConditions.volume.status}</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between py-3">
-                  <span className="text-base text-[#CFCFCF] font-semibold">패턴 조건</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full shadow-lg" style={{ backgroundColor: entryConditions.pattern.color, boxShadow: `0 0 12px ${entryConditions.pattern.color}80` }}></div>
-                    <span className="text-base font-bold" style={{ color: entryConditions.pattern.color }}>{entryConditions.pattern.status}</span>
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-xs sm:text-sm text-[#CFCFCF] font-semibold">패턴</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full" style={{ backgroundColor: entryConditions.pattern.color }}></div>
+                    <span className="text-xs sm:text-sm font-bold" style={{ color: entryConditions.pattern.color }}>{entryConditions.pattern.status}</span>
                   </div>
                 </div>
               </div>

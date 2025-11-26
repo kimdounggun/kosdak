@@ -70,49 +70,49 @@ export default function SymbolCard({ symbol, onClick, onDelete, userSymbolId }: 
   return (
     <div
       onClick={onClick}
-      className="glass rounded-lg p-3 sm:p-4 card-hover cursor-pointer relative"
+      className="glass rounded-lg p-2.5 sm:p-3 card-hover cursor-pointer relative"
     >
       {onDelete && userSymbolId && (
         <button
           onClick={handleDelete}
-          className="absolute top-2 right-2 p-1 hover:bg-red-500/20 rounded-lg transition text-gray-400 hover:text-red-400 z-10"
-          title="관심종목에서 제거"
+          className="absolute top-1.5 right-1.5 p-0.5 hover:bg-red-500/20 rounded transition text-gray-400 hover:text-red-400 z-10"
+          title="제거"
         >
-          <X className="w-3.5 h-3.5" />
+          <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
         </button>
       )}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm sm:text-base font-bold truncate">{symbol.name}</h3>
-          <p className="text-xs text-gray-400">
-            {symbol.code} · {symbol.market}
+      <div className="flex items-start justify-between mb-2">
+        <div className="flex-1 min-w-0 pr-1">
+          <h3 className="text-sm font-bold truncate leading-tight">{symbol.name}</h3>
+          <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5">
+            {symbol.code}
           </p>
         </div>
         {!onDelete && (
-          <div className="flex-shrink-0 ml-1">
-            {isUp && <TrendingUp className="w-4 h-4 text-success" />}
-            {isDown && <TrendingDown className="w-4 h-4 text-danger" />}
-            {!isUp && !isDown && <Minus className="w-4 h-4 text-gray-500" />}
+          <div className="flex-shrink-0">
+            {isUp && <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-success" />}
+            {isDown && <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-danger" />}
+            {!isUp && !isDown && <Minus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500" />}
           </div>
         )}
       </div>
 
       {loading ? (
-        <div className="space-y-2">
-          <div className="h-6 bg-gray-700 rounded animate-pulse"></div>
-          <div className="h-4 bg-gray-700 rounded w-1/2 animate-pulse"></div>
+        <div className="space-y-1.5">
+          <div className="h-5 bg-gray-700 rounded animate-pulse"></div>
+          <div className="h-3 bg-gray-700 rounded w-1/2 animate-pulse"></div>
         </div>
       ) : currentPrice > 0 ? (
         <div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-xl sm:text-2xl font-bold">
+          <div className="flex items-baseline gap-1">
+            <span className="text-base sm:text-lg font-bold leading-tight">
               {currentPrice.toLocaleString()}
             </span>
-            <span className="text-xs text-gray-400">원</span>
+            <span className="text-[10px] text-gray-400">원</span>
           </div>
           {priceChange !== 0 && (
             <div
-              className={clsx('text-sm font-semibold mt-1', {
+              className={clsx('text-xs sm:text-sm font-semibold mt-0.5', {
                 'text-success': isUp,
                 'text-danger': isDown,
                 'text-gray-400': !isUp && !isDown,
@@ -124,7 +124,7 @@ export default function SymbolCard({ symbol, onClick, onDelete, userSymbolId }: 
           )}
         </div>
       ) : (
-        <div className="text-gray-400 text-xs">데이터 없음</div>
+        <div className="text-gray-400 text-[10px] sm:text-xs">데이터 없음</div>
       )}
     </div>
   )

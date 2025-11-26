@@ -117,41 +117,41 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Main content */}
       <div className="lg:pl-64 bg-[#0D0D0D] min-h-screen flex flex-col">
         {/* Top bar */}
-        <header className="bg-[#0D0D0D] sticky top-0 z-30">
-          <div className="flex items-center justify-between p-4 sm:p-6">
+        <header className="bg-[#0D0D0D] sticky top-0 z-30 border-b border-white/5">
+          <div className="flex items-center justify-between p-3 sm:p-4 lg:p-6">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden text-white"
+              className="lg:hidden text-white p-1"
             >
-              <Menu className="w-6 h-6" />
+              <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
 
             <div className="flex-1 lg:flex-none"></div>
 
-            <div className="flex items-center gap-4">
-              <button className="relative p-2 hover:bg-[#15171A] rounded-lg transition text-white">
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <button className="relative p-1.5 sm:p-2 hover:bg-[#15171A] rounded-lg transition text-white">
+                <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full"></span>
               </button>
             </div>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="p-6 lg:p-8 bg-[#0D0D0D] flex-1">{children}</main>
+        <main className="p-3 sm:p-4 lg:p-6 bg-[#0D0D0D] flex-1">{children}</main>
         
         {/* Footer */}
-        <footer className="border-t border-white/10 p-6 text-center text-sm text-[#CFCFCF] mt-auto">
-          <p className="mb-2">© 2025 Kosdak Bot. All rights reserved.</p>
-          <div className="flex justify-center gap-4">
+        <footer className="border-t border-white/10 p-3 sm:p-4 lg:p-6 text-center text-xs sm:text-sm text-[#CFCFCF] mt-auto">
+          <p className="mb-1.5 sm:mb-2">© 2025 Kosdak Bot</p>
+          <div className="flex justify-center gap-2 sm:gap-4 flex-wrap">
             <button
               onClick={() => router.push('/terms')}
-              className="hover:text-[#00E5A8] transition"
+              className="hover:text-[#00E5A8] transition text-xs sm:text-sm"
             >
-              서비스 이용약관
+              이용약관
             </button>
             <span className="text-white/20">|</span>
-            <button className="hover:text-[#00E5A8] transition">
+            <button className="hover:text-[#00E5A8] transition text-xs sm:text-sm">
               개인정보처리방침
             </button>
           </div>

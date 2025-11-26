@@ -26,8 +26,15 @@ body {
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
+}
+
+@media (min-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
 }
 
 ::-webkit-scrollbar-track {
@@ -36,11 +43,24 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: #333;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: #444;
+}
+
+/* Mobile touch optimization */
+@media (max-width: 768px) {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Prevent text selection on mobile for UI elements */
+  button, .card-hover {
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
 
 /* Glass morphism effect - 헤지펀드 스타일 */
@@ -60,12 +80,20 @@ body {
 
 /* Card hover effect */
 .card-hover {
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .card-hover:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* Mobile active state for cards */
+@media (max-width: 768px) {
+  .card-hover:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
 }
 
 /* Price colors */
