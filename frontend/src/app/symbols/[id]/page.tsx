@@ -525,7 +525,11 @@ export default function SymbolDetailPage() {
       <div className="space-y-5 sm:space-y-6">
 
         {/* 상단 헤더 - 가격 정보 (유리 패널) */}
-        <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8">
+        <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8 relative">
+          {/* 20분 지연 워터마크 */}
+          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-[rgba(255,77,77,0.1)] border border-[rgba(255,77,77,0.3)] px-3 py-1.5 rounded-md">
+            <span className="text-xs sm:text-sm text-[#FF4D4D] font-semibold">⏱ 20분 지연 시세</span>
+          </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-4 mb-5 sm:mb-6 lg:mb-8">
             {(() => {
               const localLogoUrl = symbol?.code ? `/logos/${symbol.code}.png` : null
@@ -571,7 +575,10 @@ export default function SymbolDetailPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 sm:gap-6 lg:gap-8">
             <div>
-              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">현재가</p>
+              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold flex items-center gap-2">
+                현재가
+                <span className="text-xs bg-[rgba(255,77,77,0.1)] text-[#FF4D4D] px-2 py-0.5 rounded">지연</span>
+              </p>
               <div className="flex items-center gap-2 sm:gap-3 mb-3">
                 <p className="text-2xl sm:text-2xl lg:text-3xl font-bold text-white">
                   {symbol?.currentPrice ? symbol.currentPrice.toLocaleString() : (latestCandle ? latestCandle.close.toLocaleString() : '0')}원
@@ -746,87 +753,23 @@ export default function SymbolDetailPage() {
           )}
         </div>
 
-        {/* 3개 핵심 지표 - 상단 강조 (유리 패널) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 sm:gap-6">
-          <div className="glass-panel rounded-xl p-5 sm:p-6 text-center sm:text-left">
-            <p className="text-base sm:text-base text-[#CFCFCF] mb-3 sm:mb-3 font-semibold">오늘 추세</p>
-            <div className="flex items-center justify-center mb-3 sm:mb-4">
-              <div 
-                className="w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center"
-                style={{ 
-                  backgroundColor: trendColor === '#00E5A8' ? 'rgba(0, 229, 168, 0.1)' : trendColor === '#FF4D4D' ? 'rgba(255, 77, 77, 0.1)' : 'rgba(207, 207, 207, 0.1)',
-                  border: `2px solid ${trendColor}`
-                }}
-              >
-                <p className="text-lg sm:text-xl font-bold" style={{ color: trendColor }}>
-                  {trendDirection === '상승 추세' ? '상승' : trendDirection === '하락 추세' ? '하락' : '중립'}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 pt-3 border-t border-[rgba(255,255,255,0.05)]">
-              <p className="text-sm sm:text-sm text-[#CFCFCF] font-light">시장 방향성</p>
-            </div>
-          </div>
-          <div className="glass-panel rounded-xl p-5 sm:p-6 text-center sm:text-left">
-            <p className="text-base sm:text-base text-[#CFCFCF] mb-3 sm:mb-3 font-semibold">종합 강도 점수</p>
-            <div className="flex items-baseline justify-center sm:justify-start gap-2 mb-2">
-              <p className="text-3xl sm:text-4xl font-bold text-white tabular-nums">{marketStrength.score}</p>
-              <span className="text-base sm:text-lg text-[#CFCFCF] font-light">/ 100</span>
-            </div>
-            <div className="mt-4 pt-3 border-t border-[rgba(255,255,255,0.05)]">
-              <p className="text-base font-semibold" style={{ color: trendColor }}>{marketStrength.direction}</p>
-              <p className="text-sm text-[#CFCFCF] font-light mt-2">변동성: {marketStrength.volatility}</p>
-            </div>
-          </div>
-          <div className="glass-panel rounded-xl p-5 sm:p-6 text-center sm:text-left">
-            <p className="text-base sm:text-base text-[#CFCFCF] mb-4 sm:mb-4 font-semibold">AI 신뢰도</p>
-            {/* 반달형 게이지 - 개선된 버전 */}
-            <div className="relative w-24 h-12 sm:w-28 sm:h-14 mb-2 sm:mb-3 mx-auto sm:mx-0 flex items-center justify-center">
-              <svg width="112" height="56" viewBox="0 0 112 56" className="overflow-visible w-full h-full">
-                <defs>
-                  <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#00E5A8" />
-                    <stop offset="100%" stopColor="#00D1FF" />
-                  </linearGradient>
-                  <filter id="glow">
-                    <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-                    <feMerge>
-                      <feMergeNode in="coloredBlur"/>
-                      <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                  </filter>
-                </defs>
-                {/* 배경 반원 - 얇은 라인 */}
-                <path
-                  d="M 14 42 A 42 42 0 0 1 98 42"
-                  fill="none"
-                  stroke="rgba(255,255,255,0.05)"
-                  strokeWidth="1"
-                />
-                {/* 채워진 반원 - 네온 효과 */}
-                <path
-                  d="M 14 42 A 42 42 0 0 1 98 42"
-                  fill="none"
-                  stroke="url(#gaugeGrad)"
-                  strokeWidth="2.5"
-                  strokeDasharray={`${(confidenceMetrics.confidence / 100) * 132} 132`}
-                  strokeLinecap="round"
-                  filter="url(#glow)"
-                />
-                {/* 숫자 텍스트 - SVG 내부에 정확히 중앙 배치 */}
-                <text
-                  x="56"
-                  y="28"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className="text-lg sm:text-xl font-bold fill-white tabular-nums"
-                  style={{ fontSize: '18px' }}
-                >
-                  {confidenceMetrics.confidence}%
-                </text>
+        {/* 지연 시세 안내 문구 */}
+        <div className="glass-panel rounded-xl p-4 sm:p-5 bg-gradient-to-r from-[rgba(0,229,168,0.05)] to-[rgba(0,209,255,0.05)] border border-[rgba(0,229,168,0.2)]">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 mt-0.5">
+              <svg className="w-5 h-5 text-[#00E5A8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <p className="text-sm sm:text-base text-[#CFCFCF] mt-2 font-medium">정확도 {confidenceMetrics.accuracy}%</p>
+            <div className="flex-1">
+              <p className="text-sm text-[#00E5A8] font-semibold mb-1">시세 데이터 안내</p>
+              <p className="text-xs sm:text-sm text-[#CFCFCF] leading-relaxed">
+                시세 데이터는 KRX 정책에 따라 <span className="text-white font-semibold">20분 지연</span> 기준입니다.
+                <span className="block mt-1 text-[#00E5A8]">
+                  ✓ AI 분석, 추세 판단, 시나리오 전략 등에는 실시간 데이터와 비교해 영향이 없습니다.
+                </span>
+              </p>
+            </div>
           </div>
         </div>
 

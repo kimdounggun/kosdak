@@ -70,15 +70,15 @@ export class AiService {
           messages: [
             {
               role: 'system',
-              content: '당신은 한국 주식 시장의 전문 애널리스트입니다. 기술적 분석을 기반으로 명확하고 실용적인 투자 인사이트를 제공합니다.',
+              content: '당신은 20년 경력의 한국 주식 시장 전문 애널리스트입니다. 기술적 분석을 기반으로 구체적이고 실용적인 투자 전략을 제공합니다. 항상 명확한 가격대(진입가, 손절가, 목표가)를 제시하며, 일관된 형식으로 분석합니다.',
             },
             {
               role: 'user',
               content: prompt,
             },
           ],
-          temperature: 0.7,
-          max_tokens: 1000,
+          temperature: 0.5,  // 더 일관된 분석을 위해 낮춤
+          max_tokens: 1500,  // 더 상세한 분석을 위해 증가
         });
 
         content = completion.choices[0].message.content || '';
@@ -115,45 +115,114 @@ export class AiService {
 
     // Symbol에 저장된 당일 거래량 사용 (더 정확함)
     const volumeToDisplay = symbol.volume || latest.volume || 0;
+    const currentPrice = symbol.currentPrice || latest.close;
+    const dayOpen = symbol.dayOpen || latest.open;
+    const dayHigh = symbol.dayHigh || latest.high;
+    const dayLow = symbol.dayLow || latest.low;
+    
+    // 등락률 계산
+    const changePercent = symbol.priceChangePercent || parseFloat(priceChange);
+    const changeAmount = symbol.priceChange || (currentPrice - (symbol.previousClose || dayOpen));
+    
+    // RSI 상태 판단
+    const rsiStatus = latestIndicator.rsi 
+      ? (latestIndicator.rsi > 70 ? '과매수' : latestIndicator.rsi < 30 ? '과매도' : '중립')
+      : 'N/A';
+    
+    // MACD 시그널 판단
+    const macdSignal = (latestIndicator.macd && latestIndicator.macdSignal)
+      ? (latestIndicator.macd > latestIndicator.macdSignal ? '매수' : '매도')
+      : 'N/A';
+    
+    // 이평선 배열 판단
+    const ma5 = latestIndicator.ma5 || 0;
+    const ma20 = latestIndicator.ma20 || 0;
+    const ma60 = latestIndicator.ma60 || 0;
+    const maAlignment = (ma5 > ma20 && ma20 > ma60) ? '정배열(상승)' : 
+                       (ma5 < ma20 && ma20 < ma60) ? '역배열(하락)' : '혼조';
+    
+    // 거래량 비율
+    const volumeRatio = latestIndicator.volumeRatio || 1;
+    const volumeStatus = volumeRatio > 1.5 ? '급증' : volumeRatio > 1.0 ? '증가' : '감소';
 
-    let prompt = `${symbol.name}(${symbol.code}) - ${symbol.market} 종목 분석\n\n`;
-    prompt += `현재가: ${(symbol.currentPrice || latest.close).toLocaleString()}원\n`;
-    prompt += `전봉 대비: ${priceChange}%\n`;
-    prompt += `당일 거래량: ${volumeToDisplay.toLocaleString()}주\n`;
-    prompt += `당일 시가: ${(symbol.dayOpen || latest.open).toLocaleString()}원\n`;
-    prompt += `당일 고가: ${(symbol.dayHigh || latest.high).toLocaleString()}원\n`;
-    prompt += `당일 저가: ${(symbol.dayLow || latest.low).toLocaleString()}원\n\n`;
+    let prompt = `당신은 20년 경력의 한국 주식 시장 전문 애널리스트입니다. 기술적 분석과 차트 패턴을 기반으로 실전 투자에 도움이 되는 구체적인 인사이트를 제공합니다.
+
+[종목 정보]
+• 종목명: ${symbol.name} (${symbol.code})
+• 시장: ${symbol.market}
+
+[현재 시세] (20분 지연)
+• 현재가: ${currentPrice.toLocaleString()}원
+• 등락: ${changeAmount >= 0 ? '+' : ''}${changeAmount.toLocaleString()}원 (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)
+• 시가: ${dayOpen.toLocaleString()}원
+• 고가: ${dayHigh.toLocaleString()}원 (상승폭 ${((dayHigh - dayOpen) / dayOpen * 100).toFixed(2)}%)
+• 저가: ${dayLow.toLocaleString()}원 (하락폭 ${((dayOpen - dayLow) / dayOpen * 100).toFixed(2)}%)
+• 당일 거래량: ${volumeToDisplay.toLocaleString()}주 (평균 대비 ${volumeRatio.toFixed(1)}배, ${volumeStatus})
+
+[기술적 지표]
+`;
 
     if (latestIndicator.rsi) {
-      prompt += `RSI(14): ${latestIndicator.rsi.toFixed(2)}\n`;
+      prompt += `• RSI(14): ${latestIndicator.rsi.toFixed(2)} (${rsiStatus})\n`;
     }
-    if (latestIndicator.macd) {
-      prompt += `MACD: ${latestIndicator.macd.toFixed(2)}, Signal: ${latestIndicator.macdSignal?.toFixed(2)}\n`;
+    if (latestIndicator.macd && latestIndicator.macdSignal) {
+      prompt += `• MACD: ${latestIndicator.macd.toFixed(2)}, Signal: ${latestIndicator.macdSignal.toFixed(2)} (${macdSignal} 신호)\n`;
+      prompt += `  Histogram: ${(latestIndicator.macd - latestIndicator.macdSignal).toFixed(2)}\n`;
     }
-    if (latestIndicator.ma20) {
-      prompt += `MA20: ${latestIndicator.ma20.toFixed(0)}원\n`;
+    if (latestIndicator.ma5 && latestIndicator.ma20) {
+      prompt += `• 이동평균선: MA5(${ma5.toFixed(0)}), MA20(${ma20.toFixed(0)})`;
+      if (latestIndicator.ma60) {
+        prompt += `, MA60(${ma60.toFixed(0)})`;
+      }
+      prompt += ` → ${maAlignment}\n`;
+      prompt += `  현재가 vs MA20: ${currentPrice > ma20 ? '상회' : '하회'} (${((currentPrice - ma20) / ma20 * 100).toFixed(2)}%)\n`;
     }
-
-    prompt += `\n최근 ${candles.length}개 봉 데이터를 기반으로 다음을 분석해주세요:\n\n`;
-
-    switch (reportType) {
-      case 'trend':
-        prompt += '1. 현재 추세 방향 (상승/하락/횡보)\n2. 추세 강도\n3. 추세 지속 가능성';
-        break;
-      case 'volatility':
-        prompt += '1. 현재 변동성 수준\n2. 가격 변동 패턴\n3. 리스크 평가';
-        break;
-      case 'volume':
-        prompt += '1. 거래량 추이 분석\n2. 수급 상황\n3. 거래량 기반 신호';
-        break;
-      case 'support_resistance':
-        prompt += '1. 주요 지지선\n2. 주요 저항선\n3. 돌파/이탈 가능성';
-        break;
-      default:
-        prompt += '1. 현재 추세 및 강도\n2. 변동성 분석\n3. 수급/거래량 분석\n4. 주요 지지/저항 구간\n5. 단기/중기 전망 요약';
+    if (latestIndicator.bbUpper && latestIndicator.bbLower && latestIndicator.bbMiddle) {
+      prompt += `• 볼린저밴드: 상단(${latestIndicator.bbUpper.toFixed(0)}), 중간(${latestIndicator.bbMiddle.toFixed(0)}), 하단(${latestIndicator.bbLower.toFixed(0)})\n`;
+      const bbPosition = ((currentPrice - latestIndicator.bbLower) / (latestIndicator.bbUpper - latestIndicator.bbLower) * 100).toFixed(0);
+      prompt += `  현재 위치: ${bbPosition}% (0%=하단, 100%=상단)\n`;
+    }
+    if (latestIndicator.stochK && latestIndicator.stochD) {
+      prompt += `• Stochastic: K(${latestIndicator.stochK.toFixed(2)}), D(${latestIndicator.stochD.toFixed(2)})\n`;
     }
 
-    prompt += '\n\n명확하고 실용적인 한국어로 분석해주세요.';
+    prompt += `
+[최근 가격 동향]
+• 최근 ${Math.min(candles.length, 10)}개 봉 데이터 분석 가능
+• 5분봉 기준 단기 추세 파악
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+반드시 아래 형식을 정확히 따라 분석하세요. 각 섹션 사이에 빈 줄을 추가하세요:
+
+1. 시장 포지션
+현재 추세는 [상승/하락/횡보]이며, [강도 설명]. [추가 설명 1-2문장]
+
+2. 핵심 매매 시그널
+- [지표1]: [판단 근거]
+- [지표2]: [판단 근거]
+- [지표3]: [판단 근거]
+
+3. 리스크 요인
+- [리스크1 설명]
+- [리스크2 설명]
+
+4. 실전 투자 전략
+권장 포지션: [강력 매수/매수/관망/주의/매도]
+적정 진입가: [구체적 금액]원 (현재가 대비 [±X]%)
+손절가: [구체적 금액]원 (-[X]%)
+1차 목표가: [구체적 금액]원 (+[X]%)
+2차 목표가: [구체적 금액]원 (+[X]%)
+보유 기간: [단기/중기/장기]
+
+5. 한줄 요약
+[30자 이내 핵심 메시지]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[중요 고지사항]
+이 분석은 20분 지연 시세를 기반으로 하며, 투자 권유가 아닌 참고 정보 제공 목적입니다. 최종 투자 판단은 본인의 책임입니다.
+`;
 
     return prompt;
   }
