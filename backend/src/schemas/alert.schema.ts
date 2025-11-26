@@ -56,3 +56,4 @@ AlertSchema.index({ userId: 1, active: 1 });
 AlertSchema.index({ symbolId: 1, active: 1 });
 
 
+

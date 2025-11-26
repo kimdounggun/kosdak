@@ -27,3 +27,4 @@ export const UserSymbolSchema = SchemaFactory.createForClass(UserSymbol);
 UserSymbolSchema.index({ userId: 1, symbolId: 1 }, { unique: true });
 
 
+

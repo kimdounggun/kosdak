@@ -192,18 +192,40 @@ export default function SymbolDetailPage() {
 
   // Widget 1: 시장 시세 분석 - 실제 기간별 가격 변화 계산
   const calculateHistoricalChanges = () => {
-    if (!candles || candles.length < 2) return { min15: '0', hour1: '0', hour4: '0' }
+    if (!candles || candles.length < 2) {
+      console.log('시장 시세 분석: 캔들 데이터 부족', candles?.length || 0)
+      return { min15: '0', hour1: '0', hour4: '0', min15Price: 0, hour1Price: 0, hour4Price: 0, current: 0 }
+    }
 
     const current = candles[0].close
     // 5분봉 기준: 15분 = 3개, 1시간 = 12개, 4시간 = 48개
-    const min15Price = candles[Math.min(3, candles.length - 1)]?.close || current
-    const hour1Price = candles[Math.min(12, candles.length - 1)]?.close || current
-    const hour4Price = candles[Math.min(48, candles.length - 1)]?.close || current
+    const min15Idx = Math.min(3, candles.length - 1)
+    const hour1Idx = Math.min(12, candles.length - 1)
+    const hour4Idx = Math.min(48, candles.length - 1)
+    
+    const min15Price = candles[min15Idx]?.close || current
+    const hour1Price = candles[hour1Idx]?.close || current
+    const hour4Price = candles[hour4Idx]?.close || current
+
+    console.log('시장 시세 분석 디버그:', {
+      캔들수: candles.length,
+      현재가: current,
+      '15분_인덱스': min15Idx,
+      '15분_가격': min15Price,
+      '1시간_인덱스': hour1Idx,
+      '1시간_가격': hour1Price,
+      '4시간_인덱스': hour4Idx,
+      '4시간_가격': hour4Price,
+    })
 
     return {
       min15: ((current - min15Price) / min15Price * 100).toFixed(1),
       hour1: ((current - hour1Price) / hour1Price * 100).toFixed(1),
       hour4: ((current - hour4Price) / hour4Price * 100).toFixed(1),
+      min15Price,
+      hour1Price,
+      hour4Price,
+      current,
     }
   }
 
@@ -734,30 +756,30 @@ export default function SymbolDetailPage() {
                 )}
               </div>
 
-              {/* Data Table - 수학적 정렬 */}
+              {/* Data Table - 기간별 변화율 */}
               <div className="space-y-2 text-base">
                 <div className="grid grid-cols-3 gap-3 pb-2 border-b border-[rgba(255,255,255,0.05)]">
                   <span className="text-[#CFCFCF] font-semibold text-left">기간</span>
-                  <span className="text-[#CFCFCF] font-semibold text-right">가격</span>
+                  <span className="text-[#CFCFCF] font-semibold text-right">당시 가격</span>
                   <span className="text-[#CFCFCF] font-semibold text-right">변화율</span>
                 </div>
                 <div className="grid grid-cols-3 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
-                  <span className="text-[#CFCFCF] font-light text-left">15분</span>
-                  <span className="text-white font-semibold text-right tabular-nums">{candles[Math.min(3, candles.length - 1)]?.close.toLocaleString()}</span>
+                  <span className="text-[#CFCFCF] font-light text-left">15분 전</span>
+                  <span className="text-white font-semibold text-right tabular-nums">{historicalChanges.min15Price?.toLocaleString() || '-'}</span>
                   <span className={`text-right font-semibold tabular-nums ${Number(historicalChanges.min15) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                     {Number(historicalChanges.min15) >= 0 ? '+' : ''}{historicalChanges.min15}%
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
-                  <span className="text-[#CFCFCF] font-light text-left">1시간</span>
-                  <span className="text-white font-semibold text-right tabular-nums">{candles[Math.min(12, candles.length - 1)]?.close.toLocaleString()}</span>
+                  <span className="text-[#CFCFCF] font-light text-left">1시간 전</span>
+                  <span className="text-white font-semibold text-right tabular-nums">{historicalChanges.hour1Price?.toLocaleString() || '-'}</span>
                   <span className={`text-right font-semibold tabular-nums ${Number(historicalChanges.hour1) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                     {Number(historicalChanges.hour1) >= 0 ? '+' : ''}{historicalChanges.hour1}%
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-3 py-1">
-                  <span className="text-[#CFCFCF] font-light text-left">4시간</span>
-                  <span className="text-white font-semibold text-right tabular-nums">{candles[Math.min(48, candles.length - 1)]?.close.toLocaleString()}</span>
+                  <span className="text-[#CFCFCF] font-light text-left">4시간 전</span>
+                  <span className="text-white font-semibold text-right tabular-nums">{historicalChanges.hour4Price?.toLocaleString() || '-'}</span>
                   <span className={`text-right font-semibold tabular-nums ${Number(historicalChanges.hour4) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                     {Number(historicalChanges.hour4) >= 0 ? '+' : ''}{historicalChanges.hour4}%
                   </span>

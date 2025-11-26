@@ -36,3 +36,4 @@ export const NotificationChannelSchema = SchemaFactory.createForClass(Notificati
 NotificationChannelSchema.index({ userId: 1, type: 1 });
 
 
+

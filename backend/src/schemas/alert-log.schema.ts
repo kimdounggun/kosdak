@@ -40,3 +40,4 @@ AlertLogSchema.index({ alertId: 1, triggeredAt: -1 });
 AlertLogSchema.index({ triggeredAt: -1 });
 
 
+

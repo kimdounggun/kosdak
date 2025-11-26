@@ -47,3 +47,4 @@ AiReportSchema.index({ symbolId: 1, timeframe: 1, createdAt: -1 });
 AiReportSchema.index({ userId: 1, createdAt: -1 });
 
 
+
