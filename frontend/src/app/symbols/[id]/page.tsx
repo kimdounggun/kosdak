@@ -86,6 +86,9 @@ export default function SymbolDetailPage() {
   const [aiReport, setAiReport] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [generatingReport, setGeneratingReport] = useState(false)
+  const [activeTab, setActiveTab] = useState<'all' | 'chart' | 'ai' | 'indicators'>('all')
+  const [investmentPeriod, setInvestmentPeriod] = useState<'swing' | 'medium' | 'long'>('swing')
+  const [chartView, setChartView] = useState<'daily' | 'weekly' | 'monthly'>('daily')
 
   useEffect(() => {
     if (!isHydrated) return
@@ -131,7 +134,8 @@ export default function SymbolDetailPage() {
       const response = await api.post('/ai/report', {
         symbolId: params.id,
         timeframe: '5m',
-        reportType: 'comprehensive'
+        reportType: 'comprehensive',
+        investmentPeriod: investmentPeriod  // 투자 기간 파라미터 추가
       })
       setAiReport(response.data)
       toast.success('AI 분석 완료!', { id: 'ai' })
@@ -410,7 +414,227 @@ export default function SymbolDetailPage() {
     return { momentum, volatility, volume, pattern }
   }
 
-  // AI 결론 요약 계산
+  // 주간 분석 생성 (AI 기반)
+  const generateWeeklyAnalysis = () => {
+    if (!candles || candles.length < 5 || !indicators) {
+      return {
+        weeklyChange: 0,
+        trendSignal: '분석 중',
+        events: [],
+        avgVolume: 0
+      }
+    }
+    
+    const recentCandles = candles.slice(0, 5) // 최근 5일
+    const weeklyChange = ((recentCandles[0].close - recentCandles[4].close) / recentCandles[4].close * 100).toFixed(2)
+    const avgVolume = Math.round(recentCandles.reduce((sum, c) => sum + c.volume, 0) / 5)
+    const trendSignal = indicators.rsi > 50 ? '상승세' : '하락세'
+    
+    // AI가 주간 이벤트 분석
+    const events = []
+    
+    // 월~화: 주간 시작 분석
+    const mondayTuesday = recentCandles.slice(3, 5)
+    const earlyWeekChange = mondayTuesday.length >= 2 
+      ? ((mondayTuesday[0].close - mondayTuesday[1].close) / mondayTuesday[1].close * 100).toFixed(1)
+      : '0'
+    events.push({
+      period: '월~화',
+      description: `주간 시작 ${parseFloat(earlyWeekChange) > 0 ? '상승' : '하락'} (${earlyWeekChange}%), 전주 대비 추세 ${parseFloat(weeklyChange) > 0 ? '강화' : '약화'}`
+    })
+    
+    // 수~목: 중반 모멘텀
+    const midWeek = recentCandles.slice(1, 3)
+    const midVolume = midWeek.length > 0 ? midWeek.reduce((sum, c) => sum + c.volume, 0) / midWeek.length : 0
+    const volumeStatus = midVolume > avgVolume * 1.2 ? '급증' : midVolume > avgVolume ? '증가' : '감소'
+    events.push({
+      period: '수~목',
+      description: `거래량 ${volumeStatus}, ${indicators.macd && indicators.macdSignal && indicators.macd > indicators.macdSignal ? 'MACD 매수 유지' : 'MACD 신호 약화'}`
+    })
+    
+    // 금: 주간 마무리
+    const friday = recentCandles[0]
+    const fridayChange = recentCandles.length >= 2 
+      ? ((friday.close - recentCandles[1].close) / recentCandles[1].close * 100).toFixed(1)
+      : '0'
+    const weekendStrategy = parseFloat(weeklyChange) > 2 
+      ? '일부 익절 고려' 
+      : parseFloat(weeklyChange) < -2 
+      ? '추가 매수 기회 탐색'
+      : '포지션 유지 권장'
+    events.push({
+      period: '금',
+      description: `주간 마무리 ${parseFloat(fridayChange) > 0 ? '강세' : '약세'}, ${weekendStrategy}`
+    })
+    
+    return {
+      weeklyChange: parseFloat(weeklyChange),
+      trendSignal,
+      events,
+      avgVolume
+    }
+  }
+
+  // 월간 분석 생성 (AI 기반)
+  const generateMonthlyAnalysis = () => {
+    if (!candles || candles.length < 20 || !indicators) {
+      return {
+        monthlyTrend: '분석 중',
+        volumePattern: 0,
+        technicalStatus: '분석 중',
+        recommendation: '데이터 수집 중'
+      }
+    }
+    
+    const monthlyCandles = candles.slice(0, 20) // 최근 20일
+    const monthlyChange = ((monthlyCandles[0].close - monthlyCandles[19].close) / monthlyCandles[19].close * 100).toFixed(2)
+    const monthlyTrend = parseFloat(monthlyChange) > 0 ? '상승 추세' : '하락 추세'
+    
+    // 거래량 패턴 분석
+    const avgVolume = Math.round(monthlyCandles.reduce((sum, c) => sum + c.volume, 0) / 20)
+    
+    // 기술적 지표 상태
+    const technicalStatus = indicators.ma5 && indicators.ma20 && indicators.ma5 > indicators.ma20 
+      ? '정배열 (강세)' 
+      : '역배열 (약세)'
+    
+    // AI 기반 권장사항
+    let recommendation = ''
+    if (indicators.rsi && indicators.rsi > 50 && indicators.ma5 > indicators.ma20) {
+      recommendation = `현재 상승 추세가 유지되고 있습니다 (${monthlyChange}% 상승). 장기 보유 관점에서 분할 매수 전략을 고려하세요.`
+    } else if (indicators.rsi && indicators.rsi < 50) {
+      recommendation = `단기 조정 중입니다 (${monthlyChange}% ${parseFloat(monthlyChange) > 0 ? '상승' : '하락'}). 추가 하락 시 저점 매수 기회를 노려보세요.`
+    } else {
+      recommendation = '현재 방향성이 불분명합니다. 명확한 신호가 나올 때까지 관망을 권장합니다.'
+    }
+    
+    return {
+      monthlyTrend,
+      monthlyChange: parseFloat(monthlyChange),
+      volumePattern: avgVolume,
+      technicalStatus,
+      recommendation
+    }
+  }
+
+  // 투자 기간별 스윙 전략 생성 (AI 기반)
+  const generateSwingStrategy = () => {
+    if (!indicators || !candles || candles.length === 0) return null
+    
+    const currentPrice = candles[0].close
+    const regime = calculateSignalRegime()
+    const isBullish = regime.bullishCount > regime.totalCount / 2
+    
+    if (investmentPeriod === 'swing') {
+      // 3~7일 단기 스윙 전략
+      const targetPrice1 = currentPrice * (isBullish ? 1.03 : 0.97)
+      const targetPrice2 = currentPrice * (isBullish ? 1.05 : 0.95)
+      
+      return {
+        title: '3~7일 스윙 전략',
+        steps: [
+          {
+            day: '1일차',
+            title: '첫 진입',
+            ratio: 30,
+            price: currentPrice,
+            action: `현재가 ${currentPrice.toLocaleString()}원에서 소량 진입`,
+            description: '시장 반응 확인 및 추세 검증'
+          },
+          {
+            day: '2~3일차',
+            title: '추세 확인',
+            ratio: 30,
+            price: targetPrice1,
+            action: isBullish 
+              ? `${targetPrice1.toLocaleString()}원 돌파 시 추가 진입`
+              : `${targetPrice1.toLocaleString()}원 지지 확인 시 추가`,
+            description: isBullish ? '상승 지속 시 추가 매수, 하락 시 관망' : '반등 확인 후 추가 매수'
+          },
+          {
+            day: '5~7일차',
+            title: '청산 판단',
+            ratio: 0,
+            price: targetPrice2,
+            action: `목표가 ${targetPrice2.toLocaleString()}원 도달 시 분할 익절`,
+            description: `손절가: ${(currentPrice * 0.95).toLocaleString()}원 (-5%)`
+          }
+        ]
+      }
+    } else if (investmentPeriod === 'medium') {
+      // 2~4주 중기 전략
+      const targetPrice1 = currentPrice * (isBullish ? 1.05 : 0.95)
+      const targetPrice2 = currentPrice * (isBullish ? 1.12 : 0.92)
+      
+      return {
+        title: '2~4주 중기 전략',
+        steps: [
+          {
+            day: '1주차',
+            title: '초기 진입',
+            ratio: 40,
+            price: currentPrice,
+            action: `현재가 ${currentPrice.toLocaleString()}원 부근에서 진입`,
+            description: '현재 추세 확인 후 첫 진입, 저점 매수 기회 포착'
+          },
+          {
+            day: '2~3주차',
+            title: '추가 진입 및 모니터링',
+            ratio: 40,
+            price: targetPrice1,
+            action: isBullish
+              ? `추세 강화 시 ${targetPrice1.toLocaleString()}원 부근에서 추가 40%`
+              : `${targetPrice1.toLocaleString()}원 반등 확인 후 추가`,
+            description: '주간 흐름 관찰 및 이동평균선 지지 확인'
+          },
+          {
+            day: '4주차',
+            title: '수익 실현 또는 홀딩',
+            ratio: 0,
+            price: targetPrice2,
+            action: `목표 ${targetPrice2.toLocaleString()}원 달성 시 분할 익절`,
+            description: `추세 유지 시 홀딩 검토, 손절선: ${(currentPrice * 0.92).toLocaleString()}원 (-8%)`
+          }
+        ]
+      }
+    } else {
+      // 1~3개월 장기 전략
+      const targetPrice1 = currentPrice * 0.95
+      const targetPrice2 = currentPrice * (isBullish ? 1.20 : 1.10)
+      
+      return {
+        title: '1~3개월 장기 전략',
+        steps: [
+          {
+            day: '1개월차',
+            title: '저점 분할 매수',
+            ratio: 0,
+            price: targetPrice1,
+            action: `${targetPrice1.toLocaleString()}원 부근에서 3~4회 분할`,
+            description: '장기 관점에서 평균 단가 낮추기, 각 회차 25% 비중'
+          },
+          {
+            day: '2개월차',
+            title: '추세 전환 대기',
+            ratio: 0,
+            price: indicators.ma20 || currentPrice,
+            action: `20일 이평선 ${(indicators.ma20 || currentPrice).toLocaleString()}원 돌파 확인`,
+            description: '월간 추세 확인, 기업 실적 및 뉴스 모니터링'
+          },
+          {
+            day: '3개월차',
+            title: '수익 실현 전략',
+            ratio: 0,
+            price: targetPrice2,
+            action: `목표 수익률 15~30% 달성 시 (${targetPrice2.toLocaleString()}원)`,
+            description: '단계적 청산: 50% → 30% → 20% 순차 익절'
+          }
+        ]
+      }
+    }
+  }
+
+  // AI 결론 요약 계산 (투자 기간 고려)
   const calculateAiConclusion = () => {
     if (!indicators || !candles || candles.length === 0) {
       return {
@@ -476,48 +700,71 @@ export default function SymbolDetailPage() {
     let recommendation = ''
     let risk = ''
     let riskLevel = 'medium'
-    let period = '단기 (1~3일)'
+    let period = investmentPeriod === 'swing' ? '단기 스윙 (3~7일)' : 
+                 investmentPeriod === 'medium' ? '중기 (2~4주)' : '장기 (1~3개월)'
     
-    if (totalScore >= 70) {
+    // 투자 기간별 임계값 조정
+    const thresholds = investmentPeriod === 'swing' 
+      ? { strong: 70, buy: 55, neutral: 45, caution: 30 }
+      : investmentPeriod === 'medium'
+      ? { strong: 65, buy: 50, neutral: 40, caution: 25 }
+      : { strong: 60, buy: 45, neutral: 35, caution: 20 }
+    
+    if (totalScore >= thresholds.strong) {
       action = '강력 매수'
       actionColor = '#00E5A8'
       shortTerm = '상승 가능성 높음'
-      recommendation = '적극 매수 추천 - 현재가 기준 진입 가능'
+      
+      if (investmentPeriod === 'swing') {
+        recommendation = `향후 1~3일 내 분할 진입 전략 고려 (현재가 ${candles[0].close.toLocaleString()}원)`
+      } else if (investmentPeriod === 'medium') {
+        recommendation = `이번 주 내 첫 진입 후 2~3주차 추가 매수 (목표: +10~12%)`
+      } else {
+        recommendation = `1개월간 3~4회 분할 매수로 평균 단가 낮추기 (목표: +20~30%)`
+      }
       risk = '낮음'
       riskLevel = 'low'
-      period = '단기 (1~3일)'
-    } else if (totalScore >= 55) {
+    } else if (totalScore >= thresholds.buy) {
       action = '매수'
       actionColor = '#00D1FF'
       shortTerm = '소폭 상승 가능성'
-      recommendation = '소량 진입 후 추가 대기 권장'
+      
+      if (investmentPeriod === 'swing') {
+        recommendation = `이번 주 내 소량 진입 후 추세 확인 (3~5일 목표)`
+      } else if (investmentPeriod === 'medium') {
+        recommendation = `1주차 소량 진입 후 2주차 추가 검토 (목표: +7~10%)`
+      } else {
+        recommendation = `첫 달 저점 매수 기회 포착, 2개월차 추세 확인 (목표: +15~20%)`
+      }
       risk = '중간'
       riskLevel = 'medium'
-      period = '단기~중기 (3~7일)'
-    } else if (totalScore >= 45) {
+    } else if (totalScore >= thresholds.neutral) {
       action = '관망'
       actionColor = '#CFCFCF'
       shortTerm = '방향성 불명확'
-      recommendation = '추가 매수는 가격 조정 이후 추천'
+      recommendation = investmentPeriod === 'swing'
+        ? '명확한 추세 확인 후 진입 (2~3일 관찰)'
+        : investmentPeriod === 'medium'
+        ? '1주일 추세 확인 후 재평가'
+        : '월간 추세 전환 시점 대기'
       risk = '중간'
       riskLevel = 'medium'
-      period = '관망 후 재평가'
-    } else if (totalScore >= 30) {
+    } else if (totalScore >= thresholds.caution) {
       action = '주의'
       actionColor = '#FFA500'
       shortTerm = '하락 가능성'
       recommendation = '신규 진입 자제, 시장 상황 모니터링'
       risk = '높음'
       riskLevel = 'high'
-      period = '단기 조정 예상'
+      period = investmentPeriod === 'swing' ? '단기 조정 예상' : '중기 조정 예상'
     } else {
       action = '매도'
       actionColor = '#FF4D4D'
       shortTerm = '하락 추세'
-      recommendation = '이익 실현 추천 - 단계적 매도 권장'
+      recommendation = '보유 시 청산 검토 권장'
       risk = '매우 높음'
       riskLevel = 'very-high'
-      period = '즉시 청산 검토'
+      period = '청산 검토 필요'
     }
 
     return {
@@ -720,24 +967,76 @@ export default function SymbolDetailPage() {
               </svg>
             </div>
             <div className="flex-1">
-              <p className="text-xs sm:text-sm text-[#00E5A8] font-semibold mb-0.5">시세 데이터 안내</p>
+              <p className="text-xs sm:text-sm text-[#00E5A8] font-semibold mb-0.5">스윙/중장기 투자 분석 서비스</p>
               <p className="text-[10px] sm:text-xs text-[#CFCFCF] leading-relaxed">
-                시세는 <span className="text-white font-semibold">20분 지연</span> 기준입니다.
+                시세는 <span className="text-white font-semibold">20분 지연</span>이나, 일중·주간 투자 전략에는 영향 없습니다.
                 <span className="block mt-0.5 text-[#00E5A8]">
-                  ✓ AI 분석·추세 판단에는 영향 없음
+                  ✓ 추세 분석 및 기술적 지표 기반 · 스윙/중기 투자용
                 </span>
               </p>
             </div>
           </div>
         </div>
 
+        {/* 모바일 탭 네비게이션 */}
+        <div className="lg:hidden sticky top-[57px] z-20 bg-[#0D0D0D] -mx-3 px-3 py-2 border-b border-white/10">
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                activeTab === 'all'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-[#15171A] text-[#CFCFCF] hover:bg-[#1a1d21]'
+              }`}
+            >
+              전체 보기
+            </button>
+            <button
+              onClick={() => setActiveTab('chart')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                activeTab === 'chart'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-[#15171A] text-[#CFCFCF] hover:bg-[#1a1d21]'
+              }`}
+            >
+              차트
+            </button>
+            <button
+              onClick={() => setActiveTab('ai')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                activeTab === 'ai'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-[#15171A] text-[#CFCFCF] hover:bg-[#1a1d21]'
+              }`}
+            >
+              AI 분석
+            </button>
+            <button
+              onClick={() => setActiveTab('indicators')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                activeTab === 'indicators'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-[#15171A] text-[#CFCFCF] hover:bg-[#1a1d21]'
+              }`}
+            >
+              지표
+            </button>
+          </div>
+        </div>
+
         {/* 메인 그리드 */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4">
 
-          {/* 좌측 차트 영역 */}
-          <div className="lg:col-span-2 space-y-3 sm:space-y-4">
+          {/* 좌측 차트/AI 영역 */}
+          {(activeTab === 'all' || activeTab === 'chart' || activeTab === 'ai') && (
+          <div className={`space-y-3 sm:space-y-4 ${
+            activeTab === 'chart' ? 'col-span-full' : 
+            activeTab === 'ai' ? 'col-span-full lg:col-span-2' : 
+            'lg:col-span-2'
+          }`}>
+            {(activeTab === 'all' || activeTab === 'chart') && (
             <div className="glass-panel rounded-lg p-3 sm:p-4">
-              <div className="flex flex-col gap-2 mb-3">
+              <div className="flex flex-col gap-3 mb-3">
                 <div className="flex items-center justify-between">
                   <h2 className="text-base sm:text-lg font-bold text-white">현재 시세 분석</h2>
                   <button 
@@ -752,9 +1051,45 @@ export default function SymbolDetailPage() {
                     <span className="sm:hidden">AI분석</span>
                   </button>
                 </div>
-                <p className="text-[10px] sm:text-xs text-[#CFCFCF]">AI가 추세·강도·모멘텀 분석</p>
+                
+                {/* 차트 뷰 선택 버튼 */}
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  <button
+                    onClick={() => setChartView('daily')}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      chartView === 'daily'
+                        ? 'bg-gradient-to-r from-[rgba(0,229,168,0.2)] to-[rgba(0,209,255,0.2)] text-[#00E5A8] border border-[rgba(0,229,168,0.4)]'
+                        : 'bg-[rgba(255,255,255,0.05)] text-[#CFCFCF] hover:bg-[rgba(255,255,255,0.1)]'
+                    }`}
+                  >
+                    일별
+                  </button>
+                  <button
+                    onClick={() => setChartView('weekly')}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      chartView === 'weekly'
+                        ? 'bg-gradient-to-r from-[rgba(0,229,168,0.2)] to-[rgba(0,209,255,0.2)] text-[#00E5A8] border border-[rgba(0,229,168,0.4)]'
+                        : 'bg-[rgba(255,255,255,0.05)] text-[#CFCFCF] hover:bg-[rgba(255,255,255,0.1)]'
+                    }`}
+                  >
+                    주간 요약
+                  </button>
+                  <button
+                    onClick={() => setChartView('monthly')}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      chartView === 'monthly'
+                        ? 'bg-gradient-to-r from-[rgba(0,229,168,0.2)] to-[rgba(0,209,255,0.2)] text-[#00E5A8] border border-[rgba(0,229,168,0.4)]'
+                        : 'bg-[rgba(255,255,255,0.05)] text-[#CFCFCF] hover:bg-[rgba(255,255,255,0.1)]'
+                    }`}
+                  >
+                    월간 전략
+                  </button>
+                </div>
               </div>
 
+              {/* 차트 뷰별 컨텐츠 */}
+              {chartView === 'daily' && (
+              <>
               <div className="h-48 sm:h-64">
                 {trendData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -790,11 +1125,168 @@ export default function SymbolDetailPage() {
                   </div>
                 )}
               </div>
+              </>
+              )}
+              
+              {/* AI 기반 주간 요약 뷰 */}
+              {chartView === 'weekly' && (() => {
+                const weeklyData = generateWeeklyAnalysis()
+                const eventColors = ['#00E5A8', '#00D1FF', '#FFB800']
+                
+                return (
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-br from-[rgba(0,229,168,0.1)] to-[rgba(0,209,255,0.1)] border border-[rgba(0,229,168,0.3)] rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <svg className="w-5 h-5 text-[#00E5A8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <h3 className="text-base sm:text-lg font-bold text-white">이번 주 AI 분석</h3>
+                      </div>
+                      <div className="space-y-3">
+                        {weeklyData.events.map((event, index) => (
+                          <div key={index} className="bg-[rgba(0,0,0,0.3)] rounded-lg p-3">
+                            <div className="flex items-start gap-2">
+                              <span 
+                                className="text-xs font-semibold"
+                                style={{ color: eventColors[index % 3] }}
+                              >
+                                {event.period}
+                              </span>
+                              <p className="text-xs text-[#CFCFCF] flex-1">
+                                {event.description}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.1)] rounded-lg p-3">
+                        <p className="text-xs text-[#CFCFCF] mb-1">주간 변동률</p>
+                        <p className={`text-lg font-bold ${weeklyData.weeklyChange > 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                          {weeklyData.weeklyChange > 0 ? '+' : ''}{weeklyData.weeklyChange}%
+                        </p>
+                      </div>
+                      <div className="bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.1)] rounded-lg p-3">
+                        <p className="text-xs text-[#CFCFCF] mb-1">추세 신호</p>
+                        <p className={`text-lg font-bold ${weeklyData.trendSignal === '상승세' ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                          {weeklyData.trendSignal}
+                        </p>
+                      </div>
+                      <div className="bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.1)] rounded-lg p-3 col-span-2">
+                        <p className="text-xs text-[#CFCFCF] mb-1">평균 거래량</p>
+                        <p className="text-base font-bold text-white">
+                          {weeklyData.avgVolume.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+              
+              {/* AI 기반 월간 전략 뷰 */}
+              {chartView === 'monthly' && (() => {
+                const monthlyData = generateMonthlyAnalysis()
+                
+                return (
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-br from-[rgba(0,209,255,0.1)] to-[rgba(138,43,226,0.1)] border border-[rgba(0,209,255,0.3)] rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <svg className="w-5 h-5 text-[#00D1FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        <h3 className="text-base sm:text-lg font-bold text-white">AI 장기 추세 분석</h3>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="bg-[rgba(0,0,0,0.3)] rounded-lg p-4">
+                          <p className="text-sm font-semibold text-white mb-2">월간 투자 체크리스트</p>
+                          <ul className="space-y-2">
+                            <li className="flex items-start gap-2">
+                              <span className="text-[#00E5A8]">✓</span>
+                              <p className="text-xs text-[#CFCFCF]">
+                                월간 추세: <span className={(monthlyData.monthlyChange || 0) > 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}>
+                                  {monthlyData.monthlyTrend} ({(monthlyData.monthlyChange || 0) > 0 ? '+' : ''}{monthlyData.monthlyChange || 0}%)
+                                </span>
+                              </p>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <span className="text-[#00D1FF]">✓</span>
+                              <p className="text-xs text-[#CFCFCF]">
+                                거래량 패턴: 최근 20일 평균 <span className="text-white font-semibold">{monthlyData.volumePattern.toLocaleString()}</span>
+                              </p>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <span className="text-[#FFB800]">✓</span>
+                              <p className="text-xs text-[#CFCFCF]">
+                                기술적 지표: <span className={monthlyData.technicalStatus.includes('강세') ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}>
+                                  {monthlyData.technicalStatus}
+                                </span>
+                              </p>
+                            </li>
+                          </ul>
+                        </div>
+                        
+                        <div className="bg-gradient-to-r from-[rgba(0,229,168,0.15)] to-[rgba(0,209,255,0.15)] border border-[rgba(0,229,168,0.4)] rounded-lg p-4">
+                          <p className="text-sm font-semibold text-white mb-2">AI 전략 권장사항</p>
+                          <p className="text-xs text-[#CFCFCF] leading-relaxed">
+                            {monthlyData.recommendation}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
+            )}
 
             {/* AI 분석 리포트 섹션 */}
-            {aiReport ? (
+            {/* @ts-ignore */}
+            {(activeTab === 'all' || activeTab === 'ai') && aiReport && (
               <>
+                {/* 투자 기간 선택 옵션 */}
+                <div className="glass-panel rounded-xl p-4 sm:p-5 mb-4 bg-gradient-to-r from-[rgba(0,229,168,0.05)] to-[rgba(0,209,255,0.05)] border border-[rgba(0,229,168,0.2)]">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm sm:text-base font-bold text-white mb-1">투자 기간 설정</h3>
+                      <p className="text-xs text-[#CFCFCF]">선택한 기간에 맞춰 AI 분석과 전략이 조정됩니다</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setInvestmentPeriod('swing')}
+                        className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+                          investmentPeriod === 'swing'
+                            ? 'bg-gradient-to-r from-[rgba(0,229,168,0.2)] to-[rgba(0,209,255,0.2)] text-[#00E5A8] border border-[rgba(0,229,168,0.4)]'
+                            : 'bg-[rgba(255,255,255,0.05)] text-[#CFCFCF] hover:bg-[rgba(255,255,255,0.1)]'
+                        }`}
+                      >
+                        단기 스윙<br className="sm:hidden" /><span className="text-[10px] sm:text-xs opacity-80"> (3~7일)</span>
+                      </button>
+                      <button
+                        onClick={() => setInvestmentPeriod('medium')}
+                        className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+                          investmentPeriod === 'medium'
+                            ? 'bg-gradient-to-r from-[rgba(0,229,168,0.2)] to-[rgba(0,209,255,0.2)] text-[#00E5A8] border border-[rgba(0,229,168,0.4)]'
+                            : 'bg-[rgba(255,255,255,0.05)] text-[#CFCFCF] hover:bg-[rgba(255,255,255,0.1)]'
+                        }`}
+                      >
+                        중기<br className="sm:hidden" /><span className="text-[10px] sm:text-xs opacity-80"> (2~4주)</span>
+                      </button>
+                      <button
+                        onClick={() => setInvestmentPeriod('long')}
+                        className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+                          investmentPeriod === 'long'
+                            ? 'bg-gradient-to-r from-[rgba(0,229,168,0.2)] to-[rgba(0,209,255,0.2)] text-[#00E5A8] border border-[rgba(0,229,168,0.4)]'
+                            : 'bg-[rgba(255,255,255,0.05)] text-[#CFCFCF] hover:bg-[rgba(255,255,255,0.1)]'
+                        }`}
+                      >
+                        장기<br className="sm:hidden" /><span className="text-[10px] sm:text-xs opacity-80"> (1~3개월)</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 {/* 현재 추천 전략 요약 박스 */}
                 <div className="glass-panel rounded-xl p-5 sm:p-6 bg-gradient-to-br from-[rgba(0,229,168,0.08)] to-[rgba(0,209,255,0.08)] border-2 border-[rgba(0,229,168,0.3)]">
                   <div className="flex items-center gap-3 mb-4">
@@ -805,7 +1297,7 @@ export default function SymbolDetailPage() {
                     </div>
                     <div>
                       <h3 className="text-lg sm:text-xl font-bold text-white">현재 추천 전략 요약</h3>
-                      <p className="text-xs sm:text-sm text-[#00E5A8]">AI가 분석한 최적 투자 전략</p>
+                      <p className="text-xs sm:text-sm text-[#00E5A8]">AI가 분석한 최적 투자 전략 • {investmentPeriod === 'swing' ? '단기 스윙' : investmentPeriod === 'medium' ? '중기' : '장기'} 기준</p>
                     </div>
                   </div>
                   
@@ -889,85 +1381,95 @@ export default function SymbolDetailPage() {
                     </div>
                   </div>
 
-                  {/* 시나리오별 액션 가이드 */}
-                  <div className="mt-5 pt-5 border-t border-[rgba(255,255,255,0.1)]">
-                    <p className="text-sm font-semibold text-white mb-3">다음 단계 (상황별 추천)</p>
+                  {/* AI 기반 스윙 전략 템플릿 */}
+                  {(aiConclusion.action === '강력 매수' || aiConclusion.action === '매수') && (() => {
+                    const strategy = generateSwingStrategy()
+                    if (!strategy) return null
                     
-                    {/* 전략에 따른 조건부 시나리오 */}
-                    {aiConclusion.action === '강력 매수' || aiConclusion.action === '매수' ? (
-                      <div className="space-y-3">
-                        <div className="bg-gradient-to-r from-[rgba(0,229,168,0.15)] to-[rgba(0,229,168,0.05)] border border-[rgba(0,229,168,0.4)] rounded-lg p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[rgba(0,229,168,0.3)] flex items-center justify-center text-[#00E5A8] font-bold">1</div>
-                            <div className="flex-1">
-                              <p className="text-sm font-semibold text-white mb-1">현재 진입 가능</p>
-                              <p className="text-xs text-[#CFCFCF]">현재가 기준 분할 매수 시작 (전체 물량의 30~50%)</p>
-                            </div>
-                          </div>
+                    return (
+                      <div className="mt-5 pt-5 border-t border-[rgba(255,255,255,0.1)]">
+                        <div className="flex items-center gap-2 mb-4">
+                          <svg className="w-5 h-5 text-[#00E5A8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                          </svg>
+                          <p className="text-sm font-semibold text-white">{strategy.title}</p>
                         </div>
-                        <div className="bg-gradient-to-r from-[rgba(0,209,255,0.15)] to-[rgba(0,209,255,0.05)] border border-[rgba(0,209,255,0.4)] rounded-lg p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[rgba(0,209,255,0.3)] flex items-center justify-center text-[#00D1FF] font-bold">2</div>
-                            <div className="flex-1">
-                              <p className="text-sm font-semibold text-white mb-1">조정 시 추가 매수</p>
-                              <p className="text-xs text-[#CFCFCF]">-3~5% 하락 시 알림 설정 → 추가 매수 기회</p>
-                              <button className="mt-2 text-xs text-[#00D1FF] underline">알림 설정하기</button>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="bg-gradient-to-r from-[rgba(255,184,0,0.15)] to-[rgba(255,184,0,0.05)] border border-[rgba(255,184,0,0.4)] rounded-lg p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[rgba(255,184,0,0.3)] flex items-center justify-center text-[#FFB800] font-bold">3</div>
-                            <div className="flex-1">
-                              <p className="text-sm font-semibold text-white mb-1">목표가 도달 알림</p>
-                              <p className="text-xs text-[#CFCFCF]">1차/2차 목표가 도달 시 자동 알림</p>
-                              <button className="mt-2 text-xs text-[#FFB800] underline">알림 설정하기</button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : aiConclusion.action === '관망' ? (
-                      <div className="space-y-3">
-                        <div className="bg-gradient-to-r from-[rgba(207,207,207,0.15)] to-[rgba(207,207,207,0.05)] border border-[rgba(207,207,207,0.4)] rounded-lg p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[rgba(207,207,207,0.3)] flex items-center justify-center text-[#CFCFCF] font-bold">1</div>
-                            <div className="flex-1">
-                              <p className="text-sm font-semibold text-white mb-1">추세 확인 후 진입</p>
-                              <p className="text-xs text-[#CFCFCF]">신호 전환 시 알림 받기</p>
-                              <button className="mt-2 text-xs text-[#CFCFCF] underline">알림 설정하기</button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="bg-gradient-to-r from-[rgba(255,77,77,0.15)] to-[rgba(255,77,77,0.05)] border border-[rgba(255,77,77,0.4)] rounded-lg p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[rgba(255,77,77,0.3)] flex items-center justify-center text-[#FF4D4D] font-bold">!</div>
-                            <div className="flex-1">
-                              <p className="text-sm font-semibold text-white mb-1">손절가 모니터링</p>
-                              <p className="text-xs text-[#CFCFCF]">손절가 접근 시 즉시 알림</p>
-                              <button className="mt-2 text-xs text-[#FF4D4D] underline">알림 설정하기</button>
-                            </div>
-                          </div>
+                        
+                        <div className="space-y-3">
+                          {strategy.steps.map((step, index) => {
+                            const colors = [
+                              { bg: 'rgba(0,229,168,0.1)', bgEnd: 'rgba(0,229,168,0.05)', border: '#00E5A8', circle: '#00E5A8' },
+                              { bg: 'rgba(0,209,255,0.1)', bgEnd: 'rgba(0,209,255,0.05)', border: '#00D1FF', circle: '#00D1FF' },
+                              { bg: 'rgba(255,184,0,0.1)', bgEnd: 'rgba(255,184,0,0.05)', border: '#FFB800', circle: '#FFB800' }
+                            ]
+                            const color = colors[index % 3]
+                            
+                            return (
+                              <div 
+                                key={index}
+                                className="bg-gradient-to-r rounded-r-lg p-4"
+                                style={{
+                                  backgroundImage: `linear-gradient(to right, ${color.bg}, ${color.bgEnd})`,
+                                  borderLeft: `4px solid ${color.border}`
+                                }}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div 
+                                    className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm"
+                                    style={{ backgroundColor: color.circle }}
+                                  >
+                                    {index + 1}
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-semibold text-white mb-1">
+                                      {step.day}: {step.title}
+                                      {step.ratio > 0 && <span className="ml-1 text-[#00E5A8]">({step.ratio}%)</span>}
+                                    </p>
+                                    <p className="text-xs text-[#00D1FF] mb-1">{step.action}</p>
+                                    <p className="text-xs text-[#CFCFCF]">{step.description}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       </div>
-                    )}
-                  </div>
+                    )
+                  })()}
+
                 </div>
 
                 {/* 상세 AI 분석 리포트 */}
                 <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8">
-                  <div className="flex justify-between items-center mb-5 sm:mb-6">
+                  <div className="flex justify-between items-center mb-3 sm:mb-4">
                     <h2 className="text-xl sm:text-2xl font-bold text-white">AI 분석 리포트 (상세)</h2>
                     <span className="text-sm sm:text-base text-[#CFCFCF] font-medium">
                       {new Date(aiReport.createdAt).toLocaleString('ko-KR')}
                     </span>
                   </div>
+                  
+                  {/* 면책 문구 */}
+                  <div className="mb-5 sm:mb-6 p-3 sm:p-4 bg-[rgba(255,184,0,0.1)] border border-[rgba(255,184,0,0.3)] rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-[#FFB800] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div className="flex-1">
+                        <p className="text-xs sm:text-sm text-[#FFB800] font-semibold mb-1">투자 유의사항</p>
+                        <p className="text-[10px] sm:text-xs text-[#CFCFCF] leading-relaxed">
+                          본 분석은 <span className="text-white font-semibold">스윙/중장기 투자 참고용</span>이며, 투자 권유가 아닙니다. 
+                          <span className="block mt-1">모든 투자 결정과 그에 따른 손익은 투자자 본인의 책임입니다.</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
                   <AiReportViewer report={aiReport.content || ''} />
                 </div>
               </>
-            ) : (
+            )}
+            {/* @ts-ignore */}
+            {(activeTab === 'all' || activeTab === 'ai') && !aiReport && (
               <div className="glass-panel rounded-xl p-6 sm:p-8">
                 <div className="text-center py-6 sm:py-8">
                   <Sparkles className="w-12 h-12 sm:w-16 sm:h-16 text-[#CFCFCF] mx-auto mb-5 sm:mb-6" />
@@ -988,9 +1490,13 @@ export default function SymbolDetailPage() {
               </div>
             )}
           </div>
+          )}
 
           {/* 우측 분석 위젯 패널 - 5개 위젯, 2열 그리드 */}
-          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 auto-rows-min">
+          {(activeTab === 'all' || activeTab === 'indicators') && (
+          <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 auto-rows-min ${
+            activeTab === 'indicators' ? 'col-span-full lg:grid-cols-3' : 'lg:col-span-2'
+          }`}>
 
                     {/* 1. 시장 시세 분석 (Area Chart + Data Table) */}
                     <div className="glass-panel rounded-lg p-3 sm:p-4">
@@ -1307,6 +1813,7 @@ export default function SymbolDetailPage() {
             </div>
 
           </div>
+          )}
         </div>
 
       </div>

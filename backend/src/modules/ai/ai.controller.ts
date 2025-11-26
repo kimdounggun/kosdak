@@ -19,6 +19,7 @@ export class AiController {
       dto.timeframe,
       dto.reportType,
       req.user._id.toString(),
+      dto.investmentPeriod,
     );
   }
 

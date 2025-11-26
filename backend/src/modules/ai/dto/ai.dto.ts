@@ -19,6 +19,16 @@ export class GenerateReportDto {
   @IsOptional()
   @IsEnum(['trend', 'volatility', 'volume', 'support_resistance', 'comprehensive'])
   reportType?: string = 'comprehensive';
+
+  @ApiProperty({ 
+    example: 'swing',
+    enum: ['swing', 'medium', 'long'],
+    required: false,
+    description: '투자 기간: swing (3~7일), medium (2~4주), long (1~3개월)'
+  })
+  @IsOptional()
+  @IsEnum(['swing', 'medium', 'long'])
+  investmentPeriod?: string = 'swing';
 }
 
 

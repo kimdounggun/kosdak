@@ -30,6 +30,7 @@ export class AiService {
     timeframe: string = '5m',
     reportType: string = 'comprehensive',
     userId?: string,
+    investmentPeriod: string = 'swing',
   ): Promise<AiReportDocument> {
     // Fetch symbol info
     const symbol = await this.symbolsService.findById(symbolId);
@@ -48,7 +49,7 @@ export class AiService {
     const latestCandle = candles[0];
     const latestIndicator = indicators.length > 0 ? indicators[0] : null;
 
-    const prompt = this.buildPrompt(symbol, candles, indicators, reportType);
+    const prompt = this.buildPrompt(symbol, candles, indicators, reportType, investmentPeriod);
 
     let content = '';
     let metadata: any = {
@@ -175,7 +176,7 @@ export class AiService {
     };
   }
 
-  private buildPrompt(symbol: any, candles: any[], indicators: any[], reportType: string): string {
+  private buildPrompt(symbol: any, candles: any[], indicators: any[], reportType: string, investmentPeriod: string = 'swing'): string {
     // 완성된 캔들 사용 (candles[0]은 진행 중일 수 있음)
     const latest = candles.length > 1 ? candles[1] : candles[0];
     const latestIndicator = indicators[0] || {};
@@ -216,6 +217,14 @@ export class AiService {
     const volumeRatio = latestIndicator.volumeRatio || 1;
     const volumeStatus = volumeRatio > 1.5 ? '급증' : volumeRatio > 1.0 ? '증가' : '감소';
 
+    // 투자 기간별 설명
+    const periodInfo = {
+      swing: { name: '단기 스윙', duration: '3~7일', target: '+3~5%', stoploss: '-3%' },
+      medium: { name: '중기', duration: '2~4주', target: '+10~12%', stoploss: '-5%' },
+      long: { name: '장기', duration: '1~3개월', target: '+20~30%', stoploss: '-8%' }
+    };
+    const period = periodInfo[investmentPeriod] || periodInfo.swing;
+
     let prompt = `당신은 금융 트레이딩 분석 모델입니다.
 
 출력은 반드시 수치 기반 사실만 작성하며 감정적·과장형 표현은 금지합니다.
@@ -231,6 +240,11 @@ export class AiService {
 • 고가: ${dayHigh.toLocaleString()}원
 • 저가: ${dayLow.toLocaleString()}원
 • 당일 거래량: ${volumeToDisplay.toLocaleString()}주
+
+[투자 기간 설정]
+• 분석 기준: ${period.name} (${period.duration})
+• 목표 수익률: ${period.target}
+• 권장 손절선: ${period.stoploss}
 
 [기술적 지표]
 `;
@@ -290,15 +304,17 @@ export class AiService {
 - MACD: [수치, 방향 및 판단]
 - 이동평균선: [MA20/MA60 관계 및 판단]
 
-3. 실전 투자 전략
+3. 실전 투자 전략 (${period.name} 기준)
 권장 포지션: [강력 매수/매수/관망/주의/매도]
 상승 확률: [X]% (근거: [RSI 구간 판단] + [MACD 방향] + [이평선 배열])
 리스크 레벨: [낮음/중간/높음]
-진입가: ${currentPrice.toLocaleString()}원 (현재가 기준)
-손절가: [구체적 금액]원
-1차 목표가: [구체적 금액]원
-2차 목표가: [구체적 금액]원
-보유 기간: [단기/중기/장기]
+
+📍 ${period.name} 전략 (${period.duration}):
+- 진입가: ${currentPrice.toLocaleString()}원 (현재가 기준)
+- 손절가: [현재가 ${period.stoploss} 수준]원
+- 1차 목표가: [현재가 +${period.target.split('~')[0]} 수준]원
+- 2차 목표가: [현재가 +${period.target.split('~')[1]} 수준]원
+- 권장 전략: ${investmentPeriod === 'swing' ? '향후 1~3일 내 분할 진입' : investmentPeriod === 'medium' ? '이번 주 첫 진입 후 2주차 추가' : '1개월간 3~4회 분할 매수'}
 
 예시) 상승 확률: 70% (근거: RSI 상승 구간 + MACD 상향돌파 + MA 정배열)
 
