@@ -82,6 +82,19 @@ export class AiService {
         });
 
         content = completion.choices[0].message.content || '';
+        
+        // AI 응답 검증
+        const validation = this.validateAIResponse(content);
+        if (!validation.isValid) {
+          console.warn('AI 응답 검증 실패:', validation.errors);
+          console.warn('원본 응답:', content);
+          // 검증 실패 시 fallback 사용
+          content = this.generateFallbackReport(symbol, latestCandle, latestIndicator);
+          metadata.validationFailed = true;
+          metadata.validationErrors = validation.errors;
+        } else {
+          metadata.validationPassed = true;
+        }
       } catch (error) {
         console.error('OpenAI API error:', error);
         content = this.generateFallbackReport(symbol, latestCandle, latestIndicator);
@@ -102,6 +115,64 @@ export class AiService {
     });
 
     return report.save();
+  }
+
+  private validateAIResponse(content: string): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    
+    // 1. 필수 섹션 확인
+    const requiredSections = [
+      '1. 시장 포지션',
+      '2. 핵심 매매 시그널',
+      '3. 실전 투자 전략',
+      '4. 정량적 전망 요약'
+    ];
+    
+    requiredSections.forEach(section => {
+      if (!content.includes(section)) {
+        errors.push(`필수 섹션 누락: ${section}`);
+      }
+    });
+    
+    // 2. 상승 확률 형식 확인
+    const probabilityPattern = /상승 확률:\s*(\d+)%/;
+    const probabilityMatch = content.match(probabilityPattern);
+    if (!probabilityMatch) {
+      errors.push('상승 확률 형식 오류: "상승 확률: XX%" 패턴 누락');
+    } else {
+      const probability = parseInt(probabilityMatch[1]);
+      if (probability < 0 || probability > 100) {
+        errors.push(`상승 확률 범위 오류: ${probability}% (0~100 범위 필요)`);
+      }
+    }
+    
+    // 3. 근거 확인
+    const reasonPattern = /\(근거:[^)]+\)/;
+    if (!reasonPattern.test(content)) {
+      errors.push('상승 확률 근거 누락: "(근거: ...)" 패턴 필요');
+    }
+    
+    // 4. 리스크 레벨 확인
+    const riskPattern = /리스크 레벨:\s*(낮음|중간|높음)/;
+    if (!riskPattern.test(content)) {
+      errors.push('리스크 레벨 누락: "낮음/중간/높음" 중 하나 필요');
+    }
+    
+    // 5. 권장 포지션 확인
+    const positionPattern = /권장 포지션:\s*(강력 매수|매수|관망|주의|매도)/;
+    if (!positionPattern.test(content)) {
+      errors.push('권장 포지션 누락: "강력 매수/매수/관망/주의/매도" 중 하나 필요');
+    }
+    
+    // 6. 최소 길이 확인 (너무 짧으면 제대로 된 분석 아님)
+    if (content.length < 200) {
+      errors.push(`응답 길이 부족: ${content.length}자 (최소 200자 필요)`);
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
   }
 
   private buildPrompt(symbol: any, candles: any[], indicators: any[], reportType: string): string {

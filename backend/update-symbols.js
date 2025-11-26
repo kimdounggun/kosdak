@@ -8,7 +8,7 @@ const correctSymbols = [
     { market: 'KOSDAQ', code: '372320', name: '큐로셀', isActive: true },
     { market: 'KOSDAQ', code: '298380', name: '에이비엘바이오', isActive: true },
     { market: 'KOSDAQ', code: '053030', name: '바이넥스', isActive: true },
-    { market: 'KOSDAQ', code: '214320', name: '이노션', isActive: true },
+    // { market: 'KOSDAQ', code: '214320', name: '이노션', isActive: true }, // Yahoo Finance 데이터 부족으로 제외
     { market: 'KOSDAQ', code: '226950', name: '올릭스', isActive: true },
     { market: 'KOSPI', code: '005930', name: '삼성전자', isActive: true },
     { market: 'KOSPI', code: '000660', name: 'SK하이닉스', isActive: true },

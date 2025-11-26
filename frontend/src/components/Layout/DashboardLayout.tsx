@@ -110,7 +110,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </aside>
 
       {/* Main content */}
-      <div className="lg:pl-64 bg-[#0D0D0D]">
+      <div className="lg:pl-64 bg-[#0D0D0D] min-h-screen flex flex-col">
         {/* Top bar */}
         <header className="bg-[#0D0D0D] sticky top-0 z-30">
           <div className="flex items-center justify-between p-4 sm:p-6">
@@ -133,7 +133,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </header>
 
         {/* Page content */}
-        <main className="p-6 lg:p-8 bg-[#0D0D0D]">{children}</main>
+        <main className="p-6 lg:p-8 bg-[#0D0D0D] flex-1">{children}</main>
+        
+        {/* Footer */}
+        <footer className="border-t border-white/10 p-6 text-center text-sm text-[#CFCFCF] mt-auto">
+          <p className="mb-2">© 2025 Kosdak Bot. All rights reserved.</p>
+          <div className="flex justify-center gap-4">
+            <button
+              onClick={() => router.push('/terms')}
+              className="hover:text-[#00E5A8] transition"
+            >
+              서비스 이용약관
+            </button>
+            <span className="text-white/20">|</span>
+            <button className="hover:text-[#00E5A8] transition">
+              개인정보처리방침
+            </button>
+          </div>
+        </footer>
       </div>
     </div>
   )
