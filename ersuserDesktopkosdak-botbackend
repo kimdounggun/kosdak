@@ -1,0 +1,150 @@
+[1mdiff --git a/backend/src/workers/candles-collector.worker.ts b/backend/src/workers/candles-collector.worker.ts[m
+[1mindex 9991bc0..da703a8 100644[m
+[1m--- a/backend/src/workers/candles-collector.worker.ts[m
+[1m+++ b/backend/src/workers/candles-collector.worker.ts[m
+[36m@@ -58,12 +58,12 @@[m [mexport class CandlesCollectorWorker implements OnModuleInit {[m
+       [m
+       this.logger.debug(`Fetching data for ${yahooTicker}`);[m
+ [m
+[31m-      // Yahoo Finance Query API 직접 호출[m
+[32m+[m[32m      // Yahoo Finance Query API 직접 호출 - 5일치 5분봉 데이터 가져오기[m
+       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooTicker}`;[m
+       const response = await axios.get(url, {[m
+         params: {[m
+           interval: '5m',[m
+[31m-          range: '1d',[m
+[32m+[m[32m          range: '5d', // 5일치 데이터로 변경 (더 많은 캔들)[m
+         },[m
+         headers: {[m
+           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',[m
+[36m@@ -78,54 +78,88 @@[m [mexport class CandlesCollectorWorker implements OnModuleInit {[m
+       }[m
+ [m
+       const meta = result.meta;[m
+[31m-      const now = new Date();[m
+       [m
+[31m-      // 현재가 정보[m
+[31m-      const price = meta.regularMarketPrice;[m
+[31m-      const open = meta.regularMarketOpen || meta.previousClose || price;[m
+[31m-      const high = meta.regularMarketDayHigh || price;[m
+[31m-      const low = meta.regularMarketDayLow || price;[m
+[31m-      const volume = meta.regularMarketVolume || 0;[m
+[31m-[m
+       // 로고 URL 가져오기[m
+       // 잘못된 URL 패턴 체크 (C200x200 또는 img1.daumcdn.net/thumb 포함)[m
+       const hasInvalidUrl = symbol.logoUrl && ([m
+         symbol.logoUrl.includes('C200x200') || [m
+         symbol.logoUrl.includes('img1.daumcdn.net/thumb') ||[m
+         symbol.logoUrl.includes('finance/company') ||[m
+[31m-        symbol.logoUrl.includes('finance/logo') // 다음 DAUM 로고 URL도 404가 많아서 제거[m
+[32m+[m[32m        symbol.logoUrl.includes('finance/logo')[m
+       );[m
+       [m
+[31m-      // 잘못된 URL 패턴이면 null로 설정 (프론트엔드에서 fallback 아이콘 사용)[m
+       if (hasInvalidUrl) {[m
+         try {[m
+           await this.symbolsService.updateLogoUrl(symbol._id.toString(), null);[m
+[31m-          this.logger.log(`✅ Removed invalid logo URL for ${symbol.name} (${symbol.code}) - will use fallback icon`);[m
+[32m+[m[32m          this.logger.log(`✅ Removed invalid logo URL for ${symbol.name} (${symbol.code})`);[m
+         } catch (error) {[m
+           this.logger.warn(`Failed to remove invalid logo for ${symbol.code}: ${error.message}`);[m
+         }[m
+       }[m
+[32m+[m
+[32m+[m[32m      // 실제 5분봉 시계열 데이터 파싱[m
+[32m+[m[32m      const timestamps = result.timestamp;[m
+[32m+[m[32m      const quote = result.indicators?.quote?.[0];[m
+       [m
+[31m-      // 참고: 한국 주식 로고는 Yahoo Finance에서 제공하지 않으며,[m
+[31m-      // 다음 DAUM 로고 URL도 많은 종목에서 404를 반환합니다.[m
+[31m-      // 따라서 로고 URL은 null로 두고, 프론트엔드에서 종목명 첫 글자로 fallback 아이콘을 표시합니다.[m
+[31m-[m
+[31m-      // Save candle data[m
+[31m-      const candleData = {[m
+[31m-        symbolId: symbol._id,[m
+[31m-        timeframe: '5m',[m
+[31m-        timestamp: now,[m
+[31m-        open,[m
+[31m-        high,[m
+[31m-        low,[m
+[31m-        close: price,[m
+[31m-        volume,[m
+[31m-        sourceUpdatedAt: new Date(),[m
+[31m-        isDelayed: true,[m
+[31m-        delayMinutes: 20,[m
+[31m-      };[m
+[31m-[m
+[31m-      await this.candlesService.upsertCandle(candleData);[m
+[32m+[m[32m      if (timestamps && quote && timestamps.length > 0) {[m
+[32m+[m[32m        // 실제 5분봉 데이터 저장 (최근 100개만)[m
+[32m+[m[32m        const candlesToSave = Math.min(timestamps.length, 100);[m
+[32m+[m[32m        let savedCount = 0;[m
+[32m+[m[41m        [m
+[32m+[m[32m        for (let i = timestamps.length - candlesToSave; i < timestamps.length; i++) {[m
+[32m+[m[32m          const ts = timestamps[i];[m
+[32m+[m[32m          const open = quote.open?.[i];[m
+[32m+[m[32m          const high = quote.high?.[i];[m
+[32m+[m[32m          const low = quote.low?.[i];[m
+[32m+[m[32m          const close = quote.close?.[i];[m
+[32m+[m[32m          const volume = quote.volume?.[i];[m
+[32m+[m[41m          [m
+[32m+[m[32m          // null 값이 아닌 경우에만 저장[m
+[32m+[m[32m          if (ts && close !== null && close !== undefined) {[m
+[32m+[m[32m            const candleData = {[m
+[32m+[m[32m              symbolId: symbol._id,[m
+[32m+[m[32m              timeframe: '5m',[m
+[32m+[m[32m              timestamp: new Date(ts * 1000), // Unix timestamp to Date[m
+[32m+[m[32m              open: open || close,[m
+[32m+[m[32m              high: high || close,[m
+[32m+[m[32m              low: low || close,[m
+[32m+[m[32m              close: close,[m
+[32m+[m[32m              volume: volume || 0,[m
+[32m+[m[32m              sourceUpdatedAt: new Date(),[m
+[32m+[m[32m              isDelayed: true,[m
+[32m+[m[32m              delayMinutes: 20,[m
+[32m+[m[32m            };[m
+[32m+[m
+[32m+[m[32m            await this.candlesService.upsertCandle(candleData);[m
+[32m+[m[32m            savedCount++;[m
+[32m+[m[32m          }[m
+[32m+[m[32m        }[m
+[32m+[m[41m        [m
+[32m+[m[32m        this.logger.log([m
+[32m+[m[32m          `✅ Updated ${symbol.name} (${yahooTicker}): ${savedCount} candles saved, latest: ${meta.regularMarketPrice?.toLocaleString()}원`,[m
+[32m+[m[32m        );[m
+[32m+[m[32m      } else {[m
+[32m+[m[32m        // Fallback: meta 정보만 있는 경우 현재가로 단일 캔들 저장[m
+[32m+[m[32m        const price = meta.regularMarketPrice;[m
+[32m+[m[32m        const candleData = {[m
+[32m+[m[32m          symbolId: symbol._id,[m
+[32m+[m[32m          timeframe: '5m',[m
+[32m+[m[32m          timestamp: new Date(),[m
+[32m+[m[32m          open: meta.regularMarketOpen || price,[m
+[32m+[m[32m          high: meta.regularMarketDayHigh || price,[m
+[32m+[m[32m          low: meta.regularMarketDayLow || price,[m
+[32m+[m[32m          close: price,[m
+[32m+[m[32m          volume: meta.regularMarketVolume || 0,[m
+[32m+[m[32m          sourceUpdatedAt: new Date(),[m
+[32m+[m[32m          isDelayed: true,[m
+[32m+[m[32m          delayMinutes: 20,[m
+[32m+[m[32m        };[m
+[32m+[m
+[32m+[m[32m        await this.candlesService.upsertCandle(candleData);[m
+[32m+[m[32m        this.logger.log([m
+[32m+[m[32m          `✅ Updated ${symbol.name} (${yahooTicker}) [meta only]: ${price.toLocaleString()}원`,[m
+[32m+[m[32m        );[m
+[32m+[m[32m      }[m
+ [m
+       // Calculate and cache indicators[m
+       try {[m
+[36m@@ -138,10 +172,6 @@[m [mexport class CandlesCollectorWorker implements OnModuleInit {[m
+           `Error calculating indicators for ${symbol.code}: ${error.message}`,[m
+         );[m
+       }[m
+[31m-[m
+[31m-      this.logger.log([m
+[31m-        `✅ Updated ${symbol.name} (${yahooTicker}): ${price.toLocaleString()}원`,[m
+[31m-      );[m
+     } catch (error) {[m
+       this.logger.error([m
+         `Error fetching data for ${symbol.code}: ${error.message}`,[m

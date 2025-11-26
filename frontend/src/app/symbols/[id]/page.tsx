@@ -155,7 +155,9 @@ export default function SymbolDetailPage() {
   }
   if (loading) return <DashboardLayout><div className="p-8 text-gray-400">Loading...</div></DashboardLayout>
 
-  const latestCandle = candles && candles.length > 0 ? candles[0] : null
+  // Yahoo Finance API가 최신 캔들(진행 중)의 OHLC를 null로 반환하므로
+  // 완성된 마지막 캔들(index 1)을 사용
+  const latestCandle = candles && candles.length > 1 ? candles[1] : (candles && candles.length > 0 ? candles[0] : null)
   const trendData = candles && candles.length > 0 
     ? candles.map((c, idx) => ({ value: c.close, index: idx })).reverse().slice(0, 30)
     : []
@@ -175,6 +177,11 @@ export default function SymbolDetailPage() {
       timestamp: c.timestamp,
       isDelayed: c.isDelayed
     })))
+    console.log('⭐⭐⭐ latestCandle:', latestCandle)
+    console.log('⭐⭐⭐ latestCandle?.close:', latestCandle?.close)
+    console.log('⭐⭐⭐ latestCandle?.open:', latestCandle?.open)
+    console.log('⭐⭐⭐ latestCandle?.high:', latestCandle?.high)
+    console.log('⭐⭐⭐ latestCandle?.low:', latestCandle?.low)
     console.log('trendData:', trendData.slice(0, 5))
     const uniqueValues = new Set(trendData.map(d => d.value))
     console.log('고유한 가격 값 개수:', uniqueValues.size, '값들:', Array.from(uniqueValues).slice(0, 10))
@@ -385,11 +392,126 @@ export default function SymbolDetailPage() {
     return { momentum, volatility, volume, pattern }
   }
 
+  // AI 결론 요약 계산
+  const calculateAiConclusion = () => {
+    if (!indicators || !candles || candles.length === 0) {
+      return {
+        action: '관망',
+        actionColor: '#CFCFCF',
+        shortTerm: '데이터 부족',
+        risk: '알 수 없음',
+        riskLevel: 'medium',
+        recommendation: '데이터 수집 중',
+        reasons: []
+      }
+    }
+
+    const regime = calculateSignalRegime()
+    const strength = calculateMarketStrength()
+    
+    let totalScore = 50
+    let reasons: string[] = []
+    
+    // RSI 분석
+    if (indicators.rsi) {
+      if (indicators.rsi > 70) {
+        totalScore -= 15
+        reasons.push('RSI 과매수')
+      } else if (indicators.rsi < 30) {
+        totalScore += 15
+        reasons.push('RSI 과매도')
+      } else if (indicators.rsi > 50) {
+        totalScore += 10
+        reasons.push('RSI 상승 모멘텀')
+      }
+    }
+    
+    // MACD
+    if (indicators.macd !== undefined && indicators.macdSignal !== undefined) {
+      if (indicators.macd > indicators.macdSignal) {
+        totalScore += 15
+        reasons.push('MACD 매수 신호')
+      } else {
+        totalScore -= 10
+        reasons.push('MACD 매도 신호')
+      }
+    }
+    
+    // 이동평균
+    if (indicators.ma5 && indicators.ma20 && candles[0]) {
+      const price = candles[0].close
+      if (price > indicators.ma5 && indicators.ma5 > indicators.ma20) {
+        totalScore += 20
+        reasons.push('정배열 (상승 추세)')
+      } else if (price < indicators.ma5 && indicators.ma5 < indicators.ma20) {
+        totalScore -= 15
+        reasons.push('역배열 (하락 추세)')
+      }
+    }
+    
+    totalScore = Math.max(0, Math.min(100, totalScore))
+    
+    let action = '관망'
+    let actionColor = '#CFCFCF'
+    let shortTerm = ''
+    let recommendation = ''
+    let risk = ''
+    let riskLevel = 'medium'
+    
+    if (totalScore >= 70) {
+      action = '매수 유리'
+      actionColor = '#00E5A8'
+      shortTerm = '상승 가능성 높음'
+      recommendation = '진입 가능, 분할매수 권장'
+      risk = '낮음'
+      riskLevel = 'low'
+    } else if (totalScore >= 55) {
+      action = '매수 고려'
+      actionColor = '#00D1FF'
+      shortTerm = '소폭 상승 가능성'
+      recommendation = '소량 진입 후 추가 대기'
+      risk = '중간'
+      riskLevel = 'medium'
+    } else if (totalScore >= 45) {
+      action = '관망'
+      actionColor = '#CFCFCF'
+      shortTerm = '방향성 불명확'
+      recommendation = '추세 확인 후 진입'
+      risk = '중간'
+      riskLevel = 'medium'
+    } else if (totalScore >= 30) {
+      action = '주의'
+      actionColor = '#FFA500'
+      shortTerm = '하락 가능성'
+      recommendation = '신규 진입 자제'
+      risk = '높음'
+      riskLevel = 'high'
+    } else {
+      action = '매도 고려'
+      actionColor = '#FF4D4D'
+      shortTerm = '하락 추세'
+      recommendation = '보유 시 손절 검토'
+      risk = '매우 높음'
+      riskLevel = 'very-high'
+    }
+
+    return {
+      action,
+      actionColor,
+      shortTerm,
+      risk,
+      riskLevel,
+      recommendation,
+      reasons: reasons.slice(0, 4)
+    }
+  }
+
   const historicalChanges = calculateHistoricalChanges()
   const signalRegime = calculateSignalRegime()
   const confidenceMetrics = calculateConfidenceMetrics()
   const marketStrength = calculateMarketStrength()
   const entryConditions = calculateEntryConditions()
+  const aiConclusion = calculateAiConclusion()
 
   // 추세 방향 계산 (한글)
   const trendDirection = marketStrength.direction === '상승' ? '상승 추세' : marketStrength.direction === '하락' ? '하락 추세' : '중립'
@@ -449,9 +571,11 @@ export default function SymbolDetailPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 sm:gap-6 lg:gap-8">
             <div>
-              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">종가</p>
+              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">현재가</p>
               <div className="flex items-center gap-2 sm:gap-3 mb-3">
-                <p className="text-2xl sm:text-2xl lg:text-3xl font-bold text-white">{latestCandle ? latestCandle.close.toLocaleString() : '0'}원</p>
+                <p className="text-2xl sm:text-2xl lg:text-3xl font-bold text-white">
+                  {symbol?.currentPrice ? symbol.currentPrice.toLocaleString() : (latestCandle ? latestCandle.close.toLocaleString() : '0')}원
+                </p>
                 {candles && candles.length > 0 && (
                   <Sparkline 
                     data={candles.slice(0, 30).map(c => c.close).reverse()} 
@@ -461,14 +585,19 @@ export default function SymbolDetailPage() {
                   />
                 )}
               </div>
-              <p className={`text-lg sm:text-lg font-bold ${priceChange >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
-                {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
+              <p className={`text-lg sm:text-lg font-bold ${
+                (symbol?.priceChangePercent ?? priceChange) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'
+              }`}>
+                {(symbol?.priceChangePercent ?? priceChange) >= 0 ? '+' : ''}
+                {(symbol?.priceChangePercent ?? priceChange).toFixed(2)}%
               </p>
             </div>
             <div>
               <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">시가</p>
               <div className="flex items-center gap-2 sm:gap-3">
-                <p className="text-xl sm:text-xl lg:text-2xl font-bold text-white">{latestCandle ? latestCandle.open.toLocaleString() : '0'}원</p>
+                <p className="text-xl sm:text-xl lg:text-2xl font-bold text-white">
+                  {symbol?.dayOpen ? symbol.dayOpen.toLocaleString() : (latestCandle ? latestCandle.open.toLocaleString() : '0')}원
+                </p>
                 {candles && candles.length > 0 && (
                   <Sparkline 
                     data={candles.slice(0, 30).map(c => c.open).reverse()} 
@@ -480,10 +609,12 @@ export default function SymbolDetailPage() {
               </div>
             </div>
             <div>
-              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">고가</p>
+              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">고가 <span className="text-xs text-[#00E5A8]">(당일)</span></p>
               <div className="flex items-center gap-2">
                 <ArrowUp className="w-4 h-4 sm:w-4 sm:h-4 text-[#00E5A8]" />
-                <p className="text-xl sm:text-xl lg:text-2xl font-bold text-[#00E5A8]">{latestCandle ? latestCandle.high.toLocaleString() : '0'}원</p>
+                <p className="text-xl sm:text-xl lg:text-2xl font-bold text-[#00E5A8]">
+                  {symbol?.dayHigh ? symbol.dayHigh.toLocaleString() : (latestCandle ? latestCandle.high.toLocaleString() : '0')}원
+                </p>
                 {candles && candles.length > 0 && (
                   <Sparkline 
                     data={candles.slice(0, 30).map(c => c.high).reverse()} 
@@ -495,10 +626,12 @@ export default function SymbolDetailPage() {
               </div>
             </div>
             <div>
-              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">저가</p>
+              <p className="text-base sm:text-base text-[#CFCFCF] mb-3 font-semibold">저가 <span className="text-xs text-[#FF4D4D]">(당일)</span></p>
               <div className="flex items-center gap-2">
                 <ArrowDown className="w-4 h-4 sm:w-4 sm:h-4 text-[#FF4D4D]" />
-                <p className="text-xl sm:text-xl lg:text-2xl font-bold text-[#FF4D4D]">{latestCandle ? latestCandle.low.toLocaleString() : '0'}원</p>
+                <p className="text-xl sm:text-xl lg:text-2xl font-bold text-[#FF4D4D]">
+                  {symbol?.dayLow ? symbol.dayLow.toLocaleString() : (latestCandle ? latestCandle.low.toLocaleString() : '0')}원
+                </p>
                 {candles && candles.length > 0 && (
                   <Sparkline 
                     data={candles.slice(0, 30).map(c => c.low).reverse()} 
@@ -511,10 +644,10 @@ export default function SymbolDetailPage() {
             </div>
             <div>
               <p className="text-base text-[#CFCFCF] mb-3 font-semibold">거래량</p>
-              {latestCandle && candles && candles.length > 0 ? (
+              {(symbol?.volume || latestCandle) && candles && candles.length > 0 ? (
                 <VolumeBar 
-                  current={latestCandle.volume} 
-                  max={Math.max(...candles.slice(0, 20).map(c => c.volume), latestCandle.volume)} 
+                  current={symbol?.volume || latestCandle.volume} 
+                  max={Math.max(...candles.slice(0, 20).map(c => c.volume), symbol?.volume || latestCandle.volume)} 
                   width={140}
                 />
               ) : (
@@ -522,6 +655,95 @@ export default function SymbolDetailPage() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* AI 종합 판단 */}
+        <div 
+          className="glass-panel rounded-xl p-6 sm:p-8 border-l-4"
+          style={{ borderLeftColor: aiConclusion.actionColor }}
+        >
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* AI 판단 */}
+            <div className="lg:col-span-1">
+              <p className="text-sm text-[#CFCFCF] mb-2">AI 종합 판단</p>
+              <p className="text-3xl font-bold mb-3" style={{ color: aiConclusion.actionColor }}>
+                {aiConclusion.action}
+              </p>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-[#CFCFCF]">신뢰도</span>
+                <span className="text-white font-semibold">{confidenceMetrics.confidence}%</span>
+                <span className="text-[#CFCFCF]">
+                  {confidenceMetrics.confidence >= 80 ? '(높음)' : 
+                   confidenceMetrics.confidence >= 60 ? '(보통)' : '(낮음)'}
+                </span>
+              </div>
+            </div>
+
+            {/* 핵심 정보 */}
+            <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <p className="text-xs text-[#CFCFCF] mb-2">오늘 추세</p>
+                <div 
+                  className="inline-flex px-3 py-1 rounded-full text-sm font-semibold"
+                  style={{ 
+                    backgroundColor: trendColor === '#00E5A8' ? 'rgba(0, 229, 168, 0.15)' : 
+                                     trendColor === '#FF4D4D' ? 'rgba(255, 77, 77, 0.15)' : 'rgba(207, 207, 207, 0.15)',
+                    color: trendColor
+                  }}
+                >
+                  {trendDirection === '상승 추세' ? '상승' : trendDirection === '하락 추세' ? '하락' : '중립'}
+                </div>
+                <p className="text-xs text-[#CFCFCF] mt-2">RSI·MACD 기준</p>
+              </div>
+              
+              <div>
+                <p className="text-xs text-[#CFCFCF] mb-2">매수세 강도</p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-white">{marketStrength.score}</span>
+                  <span className="text-sm text-[#CFCFCF]">/ 100</span>
+                </div>
+                <p className="text-xs text-[#CFCFCF] mt-2">
+                  {Number(marketStrength.score) >= 70 ? '강세' : 
+                   Number(marketStrength.score) >= 50 ? '우위' : 
+                   Number(marketStrength.score) >= 30 ? '균형' : '약세'}
+                </p>
+              </div>
+              
+              <div>
+                <p className="text-xs text-[#CFCFCF] mb-2">리스크</p>
+                <p className="text-lg font-semibold" style={{ 
+                  color: aiConclusion.riskLevel === 'low' ? '#00E5A8' : 
+                         aiConclusion.riskLevel === 'high' || aiConclusion.riskLevel === 'very-high' ? '#FF4D4D' : '#CFCFCF' 
+                }}>
+                  {aiConclusion.risk}
+                </p>
+                <p className="text-xs text-[#CFCFCF] mt-2">변동성 {marketStrength.volatility}</p>
+              </div>
+            </div>
+
+            {/* 추천 행동 */}
+            <div className="lg:col-span-1 bg-[rgba(255,255,255,0.03)] rounded-lg p-4">
+              <p className="text-xs text-[#CFCFCF] mb-2">추천 행동</p>
+              <p className="text-sm text-white font-medium leading-relaxed">{aiConclusion.recommendation}</p>
+            </div>
+          </div>
+
+          {/* 판단 근거 */}
+          {aiConclusion.reasons.length > 0 && (
+            <div className="mt-6 pt-4 border-t border-[rgba(255,255,255,0.05)]">
+              <p className="text-xs text-[#CFCFCF] mb-3">판단 근거</p>
+              <div className="flex flex-wrap gap-2">
+                {aiConclusion.reasons.map((reason, idx) => (
+                  <span 
+                    key={idx}
+                    className="text-xs bg-[rgba(255,255,255,0.05)] text-[#CFCFCF] px-3 py-1.5 rounded-md border border-[rgba(255,255,255,0.05)]"
+                  >
+                    {reason}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 3개 핵심 지표 - 상단 강조 (유리 패널) */}

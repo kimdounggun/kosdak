@@ -105,17 +105,24 @@ export class AiService {
   }
 
   private buildPrompt(symbol: any, candles: any[], indicators: any[], reportType: string): string {
-    const latest = candles[0];
+    // 완성된 캔들 사용 (candles[0]은 진행 중일 수 있음)
+    const latest = candles.length > 1 ? candles[1] : candles[0];
     const latestIndicator = indicators[0] || {};
 
     const priceChange = candles.length > 1 
       ? ((latest.close - candles[1].close) / candles[1].close * 100).toFixed(2)
       : '0';
 
+    // Symbol에 저장된 당일 거래량 사용 (더 정확함)
+    const volumeToDisplay = symbol.volume || latest.volume || 0;
+
     let prompt = `${symbol.name}(${symbol.code}) - ${symbol.market} 종목 분석\n\n`;
-    prompt += `현재가: ${latest.close.toLocaleString()}원\n`;
+    prompt += `현재가: ${(symbol.currentPrice || latest.close).toLocaleString()}원\n`;
     prompt += `전봉 대비: ${priceChange}%\n`;
-    prompt += `거래량: ${latest.volume.toLocaleString()}\n\n`;
+    prompt += `당일 거래량: ${volumeToDisplay.toLocaleString()}주\n`;
+    prompt += `당일 시가: ${(symbol.dayOpen || latest.open).toLocaleString()}원\n`;
+    prompt += `당일 고가: ${(symbol.dayHigh || latest.high).toLocaleString()}원\n`;
+    prompt += `당일 저가: ${(symbol.dayLow || latest.low).toLocaleString()}원\n\n`;
 
     if (latestIndicator.rsi) {
       prompt += `RSI(14): ${latestIndicator.rsi.toFixed(2)}\n`;
@@ -152,9 +159,14 @@ export class AiService {
   }
 
   private generateFallbackReport(symbol: any, candle: any, indicator: any): string {
+    const volumeToDisplay = symbol.volume || candle.volume || 0;
+    
     let report = `${symbol.name}(${symbol.code}) 기술적 분석 리포트\n\n`;
-    report += `현재가: ${candle.close.toLocaleString()}원\n`;
-    report += `거래량: ${candle.volume.toLocaleString()}\n\n`;
+    report += `현재가: ${(symbol.currentPrice || candle.close).toLocaleString()}원\n`;
+    report += `당일 거래량: ${volumeToDisplay.toLocaleString()}주\n`;
+    report += `당일 시가: ${(symbol.dayOpen || candle.open)?.toLocaleString()}원\n`;
+    report += `당일 고가: ${(symbol.dayHigh || candle.high)?.toLocaleString()}원\n`;
+    report += `당일 저가: ${(symbol.dayLow || candle.low)?.toLocaleString()}원\n\n`;
 
     if (indicator) {
       report += `기술적 지표:\n`;

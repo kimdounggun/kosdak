@@ -90,6 +90,24 @@ export class SymbolsService {
     );
   }
 
+  async updateMarketData(symbolId: string, marketData: {
+    currentPrice?: number;
+    dayHigh?: number;
+    dayLow?: number;
+    dayOpen?: number;
+    previousClose?: number;
+    priceChange?: number;
+    priceChangePercent?: number;
+    volume?: number;
+    lastUpdated?: Date;
+  }) {
+    return this.symbolModel.findByIdAndUpdate(
+      symbolId,
+      { $set: marketData },
+      { new: true },
+    );
+  }
+
   async updateAllLogos() {
     const symbols = await this.symbolModel.find({ isActive: true });
     const results = [];

@@ -74,11 +74,11 @@ export default function AiReportProViewer({ report }: AiReportProViewerProps) {
                 else if (title.includes('리스크') || title.includes('주의')) {
                     title = 'RISK FACTORS'
                     icon = AlertTriangle
-                    sentiment = 'neutral'
+                    sentiment = 'neutral' as const
                     score = 30
                 }
 
-                currentSection = { title, content, icon, sentiment, score }
+                currentSection = { title, content, icon, sentiment: sentiment as 'bullish' | 'bearish' | 'neutral', score }
             } else {
                 if (currentSection.title) {
                     currentSection.content += ' ' + line.trim()
