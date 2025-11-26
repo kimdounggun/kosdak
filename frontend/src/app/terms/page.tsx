@@ -197,7 +197,7 @@ export default function TermsPage() {
             서비스 이용약관에 대한 문의사항이 있으시면 아래로 연락해 주세요.
           </p>
           <p className="text-sm text-[#00E5A8] mt-3">
-            이메일: support@kosdakbot.com (예시)
+            이메일: fortis_systems@naver.com
           </p>
         </div>
 

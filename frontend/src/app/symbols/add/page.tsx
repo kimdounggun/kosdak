@@ -13,8 +13,6 @@ export default function AddSymbolPage() {
   const [symbols, setSymbols] = useState<any[]>([])
   const [userSymbols, setUserSymbols] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [logoErrors, setLogoErrors] = useState<Set<string>>(new Set())
-  const [localLogoErrors, setLocalLogoErrors] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!isHydrated) return
@@ -106,51 +104,13 @@ export default function AddSymbolPage() {
                 className="glass rounded-xl p-4 sm:p-6 hover:bg-dark-200 transition cursor-pointer"
                 onClick={() => addSymbol(symbol._id)}
               >
-                <div className="flex items-center gap-3 mb-4">
-                  {(() => {
-                    const localLogoUrl = symbol.code ? `/logos/${symbol.code}.png` : null
-                    const dbLogoUrl = symbol.logoUrl
-                    const logoUrl = localLogoUrl && !localLogoErrors?.has(symbol._id) 
-                      ? localLogoUrl 
-                      : (dbLogoUrl && !logoErrors.has(symbol._id) ? dbLogoUrl : null)
-                    
-                    return logoUrl ? (
-                      <img 
-                        src={logoUrl} 
-                        alt={symbol.name}
-                        className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg object-contain flex-shrink-0 bg-white/5 p-1"
-                        style={{ 
-                          imageRendering: '-webkit-optimize-contrast',
-                          width: 'auto',
-                          height: 'auto',
-                          maxWidth: '100%',
-                          maxHeight: '100%'
-                        }}
-                        loading="eager"
-                        onError={() => {
-                          if (localLogoUrl && !localLogoErrors?.has(symbol._id)) {
-                            setLocalLogoErrors(prev => new Set(prev).add(symbol._id))
-                          } else if (dbLogoUrl && !logoErrors.has(symbol._id)) {
-                            setLogoErrors(prev => new Set(prev).add(symbol._id))
-                          }
-                        }}
-                      />
-                    ) : (
-                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary-600 to-primary-700 flex items-center justify-center flex-shrink-0">
-                        <span className="text-white font-bold text-lg sm:text-xl">
-                          {symbol.name.charAt(0)}
-                        </span>
-                      </div>
-                    )
-                  })()}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-base sm:text-lg font-bold truncate mb-1">{symbol.name}</h3>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold mb-1">{symbol.name}</h3>
                     <p className="text-xs sm:text-sm text-gray-400">
                       {symbol.code} · {symbol.market}
                     </p>
                   </div>
-                </div>
-                <div className="mt-4">
                   <button className="w-full py-1.5 sm:py-2 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition text-xs sm:text-sm">
                     추가하기
                   </button>

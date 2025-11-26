@@ -86,8 +86,6 @@ export default function SymbolDetailPage() {
   const [aiReport, setAiReport] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [generatingReport, setGeneratingReport] = useState(false)
-  const [logoError, setLogoError] = useState(false)
-  const [localLogoError, setLocalLogoError] = useState(false)
 
   useEffect(() => {
     if (!isHydrated) return
@@ -538,47 +536,9 @@ export default function SymbolDetailPage() {
           <div className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-[rgba(255,77,77,0.1)] border border-[rgba(255,77,77,0.3)] px-3 py-1.5 rounded-md">
             <span className="text-xs sm:text-sm text-[#FF4D4D] font-semibold">⏱ 20분 지연 시세</span>
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-4 mb-5 sm:mb-6 lg:mb-8">
-            {(() => {
-              const localLogoUrl = symbol?.code ? `/logos/${symbol.code}.png` : null
-              const dbLogoUrl = symbol?.logoUrl
-              const logoUrl = localLogoUrl && !localLogoError 
-                ? localLogoUrl 
-                : (dbLogoUrl && !logoError ? dbLogoUrl : null)
-              
-              return logoUrl ? (
-                <img 
-                  src={logoUrl} 
-                  alt={symbol.name}
-                  className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 rounded-xl object-contain flex-shrink-0 bg-white/5 p-2"
-                  style={{ 
-                    imageRendering: '-webkit-optimize-contrast',
-                    width: 'auto',
-                    height: 'auto',
-                    maxWidth: '100%',
-                    maxHeight: '100%'
-                  }}
-                  loading="eager"
-                  onError={() => {
-                    if (localLogoUrl && !localLogoError) {
-                      setLocalLogoError(true)
-                    } else if (dbLogoUrl && !logoError) {
-                      setLogoError(true)
-                    }
-                  }}
-                />
-              ) : (
-                <div className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 rounded-xl bg-gradient-to-br from-primary-600 to-primary-700 flex items-center justify-center flex-shrink-0">
-                  <span className="text-white font-bold text-2xl sm:text-3xl lg:text-4xl">
-                    {symbol?.name?.charAt(0) || '?'}
-                  </span>
-                </div>
-              )
-            })()}
-            <div className="flex flex-col sm:flex-row sm:items-baseline gap-3 sm:gap-4">
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white leading-tight">{symbol?.name}</h1>
-              <span className="text-base sm:text-base lg:text-lg text-[#CFCFCF] font-mono font-medium">{symbol?.code} · {symbol?.market}</span>
-            </div>
+          <div className="flex flex-col gap-3 sm:gap-4 mb-5 sm:mb-6 lg:mb-8">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white leading-tight">{symbol?.name}</h1>
+            <span className="text-base sm:text-base lg:text-lg text-[#CFCFCF] font-mono font-medium">{symbol?.code} · {symbol?.market}</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 sm:gap-6 lg:gap-8">

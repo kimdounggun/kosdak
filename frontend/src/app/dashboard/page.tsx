@@ -94,26 +94,26 @@ export default function DashboardPage() {
 
         {/* Symbols Grid */}
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="glass rounded-xl p-6 animate-pulse">
-                <div className="h-6 bg-gray-700 rounded w-3/4 mb-4"></div>
+              <div key={i} className="glass rounded-lg p-3 sm:p-4 animate-pulse">
+                <div className="h-5 bg-gray-700 rounded w-3/4 mb-3"></div>
                 <div className="h-4 bg-gray-700 rounded w-1/2"></div>
               </div>
             ))}
           </div>
         ) : symbols.length === 0 ? (
-          <div className="glass rounded-xl p-12 text-center">
-            <p className="text-gray-400 mb-4">등록된 관심종목이 없습니다</p>
+          <div className="glass rounded-xl p-8 sm:p-12 text-center">
+            <p className="text-gray-400 mb-4 text-sm sm:text-base">등록된 관심종목이 없습니다</p>
             <button
               onClick={() => router.push('/symbols/add')}
-              className="px-6 py-3 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition"
+              className="px-4 sm:px-6 py-2 sm:py-3 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition text-sm sm:text-base"
             >
               첫 종목 추가하기
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             {symbols.map((userSymbol) => (
               <SymbolCard
                 key={userSymbol._id}

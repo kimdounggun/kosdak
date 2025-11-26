@@ -25,11 +25,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const navigation = [
-    { name: '대시보드', href: '/dashboard', icon: Home },
-    { name: '종목 목록', href: '/symbols', icon: TrendingUp },
-    { name: '알림 관리', href: '/alerts', icon: Bell },
-    { name: 'AI 분석', href: '/ai-reports', icon: BarChart3 },
-    { name: '설정', href: '/settings', icon: Settings },
+    { name: '대시보드', href: '/dashboard', icon: Home, badge: null },
+    { name: '종목 목록', href: '/symbols', icon: TrendingUp, badge: null },
+    { name: '알림 관리', href: '/alerts', icon: Bell, badge: '준비중' },
+    { name: 'AI 분석', href: '/ai-reports', icon: BarChart3, badge: null },
+    { name: '설정', href: '/settings', icon: Settings, badge: null },
   ]
 
   const handleLogout = () => {
@@ -79,7 +79,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[#15171A] transition text-white"
                 >
                   <Icon className="w-5 h-5" />
-                  <span>{item.name}</span>
+                  <span className="flex-1 text-left">{item.name}</span>
+                  {item.badge && (
+                    <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-500 rounded">
+                      {item.badge}
+                    </span>
+                  )}
                 </button>
               )
             })}
