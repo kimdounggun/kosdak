@@ -402,6 +402,7 @@ export default function SymbolDetailPage() {
         risk: '알 수 없음',
         riskLevel: 'medium',
         recommendation: '데이터 수집 중',
+        period: '평가 불가',
         reasons: []
       }
     }
@@ -457,42 +458,48 @@ export default function SymbolDetailPage() {
     let recommendation = ''
     let risk = ''
     let riskLevel = 'medium'
+    let period = '단기 (1~3일)'
     
     if (totalScore >= 70) {
-      action = '매수 유리'
+      action = '강력 매수'
       actionColor = '#00E5A8'
       shortTerm = '상승 가능성 높음'
-      recommendation = '진입 가능, 분할매수 권장'
+      recommendation = '적극 매수 추천 - 현재가 기준 진입 가능'
       risk = '낮음'
       riskLevel = 'low'
+      period = '단기 (1~3일)'
     } else if (totalScore >= 55) {
-      action = '매수 고려'
+      action = '매수'
       actionColor = '#00D1FF'
       shortTerm = '소폭 상승 가능성'
-      recommendation = '소량 진입 후 추가 대기'
+      recommendation = '소량 진입 후 추가 대기 권장'
       risk = '중간'
       riskLevel = 'medium'
+      period = '단기~중기 (3~7일)'
     } else if (totalScore >= 45) {
       action = '관망'
       actionColor = '#CFCFCF'
       shortTerm = '방향성 불명확'
-      recommendation = '추세 확인 후 진입'
+      recommendation = '추가 매수는 가격 조정 이후 추천'
       risk = '중간'
       riskLevel = 'medium'
+      period = '관망 후 재평가'
     } else if (totalScore >= 30) {
       action = '주의'
       actionColor = '#FFA500'
       shortTerm = '하락 가능성'
-      recommendation = '신규 진입 자제'
+      recommendation = '신규 진입 자제, 시장 상황 모니터링'
       risk = '높음'
       riskLevel = 'high'
+      period = '단기 조정 예상'
     } else {
-      action = '매도 고려'
+      action = '매도'
       actionColor = '#FF4D4D'
       shortTerm = '하락 추세'
-      recommendation = '보유 시 손절 검토'
+      recommendation = '이익 실현 추천 - 단계적 매도 권장'
       risk = '매우 높음'
       riskLevel = 'very-high'
+      period = '즉시 청산 검토'
     }
 
     return {
@@ -502,6 +509,7 @@ export default function SymbolDetailPage() {
       risk,
       riskLevel,
       recommendation,
+      period,
       reasons: reasons.slice(0, 4)
     }
   }
@@ -843,15 +851,179 @@ export default function SymbolDetailPage() {
 
             {/* AI 분석 리포트 섹션 */}
             {aiReport ? (
-              <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8">
-                <div className="flex justify-between items-center mb-5 sm:mb-6">
-                  <h2 className="text-xl sm:text-2xl font-bold text-white">AI 분석 리포트</h2>
-                  <span className="text-sm sm:text-base text-[#CFCFCF] font-medium">
-                    {new Date(aiReport.createdAt).toLocaleString('ko-KR')}
-                  </span>
+              <>
+                {/* 현재 추천 전략 요약 박스 */}
+                <div className="glass-panel rounded-xl p-5 sm:p-6 bg-gradient-to-br from-[rgba(0,229,168,0.08)] to-[rgba(0,209,255,0.08)] border-2 border-[rgba(0,229,168,0.3)]">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#00E5A8] to-[#00D1FF] flex items-center justify-center">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-lg sm:text-xl font-bold text-white">현재 추천 전략 요약</h3>
+                      <p className="text-xs sm:text-sm text-[#00E5A8]">AI가 분석한 최적 투자 전략</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+                    <div className="bg-[rgba(0,0,0,0.3)] rounded-lg p-4">
+                      <p className="text-sm text-[#CFCFCF] mb-1">🔹 전략</p>
+                      <p className="text-lg font-bold text-white mb-2">{aiConclusion.action}</p>
+                      <p className="text-xs text-[#00E5A8] leading-relaxed">
+                        {aiConclusion.reasons.slice(0, 2).join(' • ')}
+                      </p>
+                    </div>
+                    <div className="bg-[rgba(0,0,0,0.3)] rounded-lg p-4">
+                      <p className="text-sm text-[#CFCFCF] mb-1">🔹 현재 포지션 위험도</p>
+                      <p className="text-lg font-bold mb-1" style={{ 
+                        color: aiConclusion.riskLevel === 'low' ? '#00E5A8' : 
+                               aiConclusion.riskLevel === 'medium' ? '#FFB800' : '#FF4D4D' 
+                      }}>
+                        {aiConclusion.risk}
+                      </p>
+                      <p className="text-xs" style={{
+                        color: aiConclusion.riskLevel === 'low' ? '#00E5A8' : 
+                               aiConclusion.riskLevel === 'medium' ? '#FFB800' : '#FF4D4D'
+                      }}>
+                        {aiConclusion.riskLevel === 'low' ? '✓ 안전한 진입 구간' : 
+                         aiConclusion.riskLevel === 'medium' ? '⚠ 신중한 접근 필요' : 
+                         '⚠️ 고위험 주의'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 핵심 수치 3개 메트릭 - 시각적 강화 */}
+                  <div className="grid grid-cols-3 gap-3 mb-5">
+                    <div className="text-center bg-[rgba(0,229,168,0.1)] border border-[rgba(0,229,168,0.3)] rounded-lg p-4 relative overflow-hidden">
+                      <div 
+                        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[rgba(0,229,168,0.2)] to-transparent"
+                        style={{ height: `${confidenceMetrics.confidence}%` }}
+                      ></div>
+                      <p className="text-xs text-[#CFCFCF] mb-2 relative z-10">신뢰도</p>
+                      <p className="text-2xl font-bold text-[#00E5A8] relative z-10">{confidenceMetrics.confidence}%</p>
+                      <p className="text-xs text-[#00E5A8] mt-1 relative z-10">
+                        {confidenceMetrics.confidence >= 70 ? '높음' : confidenceMetrics.confidence >= 50 ? '보통' : '낮음'}
+                      </p>
+                    </div>
+                    <div className="text-center bg-[rgba(255,184,0,0.1)] border border-[rgba(255,184,0,0.3)] rounded-lg p-4">
+                      <p className="text-xs text-[#CFCFCF] mb-2">리스크</p>
+                      <p className="text-3xl font-bold mb-1" style={{
+                        color: aiConclusion.riskLevel === 'low' ? '#00E5A8' : 
+                               aiConclusion.riskLevel === 'medium' ? '#FFB800' : '#FF4D4D'
+                      }}>
+                        {aiConclusion.riskLevel === 'low' ? '🟢' : 
+                         aiConclusion.riskLevel === 'medium' ? '🟡' : '🔴'}
+                      </p>
+                      <p className="text-sm font-bold" style={{
+                        color: aiConclusion.riskLevel === 'low' ? '#00E5A8' : 
+                               aiConclusion.riskLevel === 'medium' ? '#FFB800' : '#FF4D4D'
+                      }}>
+                        {aiConclusion.risk}
+                      </p>
+                    </div>
+                    <div className="text-center bg-[rgba(0,209,255,0.1)] border border-[rgba(0,209,255,0.3)] rounded-lg p-4 relative overflow-hidden">
+                      <div 
+                        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[rgba(0,209,255,0.2)] to-transparent"
+                        style={{ height: `${marketStrength.score}%` }}
+                      ></div>
+                      <p className="text-xs text-[#CFCFCF] mb-2 relative z-10">추세 강도</p>
+                      <p className="text-2xl font-bold text-[#00D1FF] relative z-10">{marketStrength.score}</p>
+                      <p className="text-xs text-[#00D1FF] mt-1 relative z-10">
+                        {Number(marketStrength.score) >= 70 ? '강세' : Number(marketStrength.score) >= 50 ? '중립' : '약세'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 적정 행동 + 예상 기간 */}
+                  <div className="bg-gradient-to-r from-[rgba(0,229,168,0.15)] to-[rgba(0,209,255,0.15)] border border-[rgba(0,229,168,0.4)] rounded-lg p-4">
+                    <p className="text-sm font-semibold text-white mb-2">적정 행동</p>
+                    <p className="text-sm text-[#CFCFCF] mb-3">{aiConclusion.recommendation}</p>
+                    <div className="pt-3 border-t border-[rgba(255,255,255,0.1)]">
+                      <p className="text-xs text-[#00E5A8]">
+                        데이터 기반 예상 기간: <span className="font-semibold">{aiConclusion.period}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 시나리오별 액션 가이드 */}
+                  <div className="mt-5 pt-5 border-t border-[rgba(255,255,255,0.1)]">
+                    <p className="text-sm font-semibold text-white mb-3">다음 단계 (상황별 추천)</p>
+                    
+                    {/* 전략에 따른 조건부 시나리오 */}
+                    {aiConclusion.action === '강력 매수' || aiConclusion.action === '매수' ? (
+                      <div className="space-y-3">
+                        <div className="bg-gradient-to-r from-[rgba(0,229,168,0.15)] to-[rgba(0,229,168,0.05)] border border-[rgba(0,229,168,0.4)] rounded-lg p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[rgba(0,229,168,0.3)] flex items-center justify-center text-[#00E5A8] font-bold">1</div>
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-white mb-1">현재 진입 가능</p>
+                              <p className="text-xs text-[#CFCFCF]">현재가 기준 분할 매수 시작 (전체 물량의 30~50%)</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-gradient-to-r from-[rgba(0,209,255,0.15)] to-[rgba(0,209,255,0.05)] border border-[rgba(0,209,255,0.4)] rounded-lg p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[rgba(0,209,255,0.3)] flex items-center justify-center text-[#00D1FF] font-bold">2</div>
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-white mb-1">조정 시 추가 매수</p>
+                              <p className="text-xs text-[#CFCFCF]">-3~5% 하락 시 알림 설정 → 추가 매수 기회</p>
+                              <button className="mt-2 text-xs text-[#00D1FF] underline">알림 설정하기</button>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-gradient-to-r from-[rgba(255,184,0,0.15)] to-[rgba(255,184,0,0.05)] border border-[rgba(255,184,0,0.4)] rounded-lg p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[rgba(255,184,0,0.3)] flex items-center justify-center text-[#FFB800] font-bold">3</div>
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-white mb-1">목표가 도달 알림</p>
+                              <p className="text-xs text-[#CFCFCF]">1차/2차 목표가 도달 시 자동 알림</p>
+                              <button className="mt-2 text-xs text-[#FFB800] underline">알림 설정하기</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : aiConclusion.action === '관망' ? (
+                      <div className="space-y-3">
+                        <div className="bg-gradient-to-r from-[rgba(207,207,207,0.15)] to-[rgba(207,207,207,0.05)] border border-[rgba(207,207,207,0.4)] rounded-lg p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[rgba(207,207,207,0.3)] flex items-center justify-center text-[#CFCFCF] font-bold">1</div>
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-white mb-1">추세 확인 후 진입</p>
+                              <p className="text-xs text-[#CFCFCF]">신호 전환 시 알림 받기</p>
+                              <button className="mt-2 text-xs text-[#CFCFCF] underline">알림 설정하기</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="bg-gradient-to-r from-[rgba(255,77,77,0.15)] to-[rgba(255,77,77,0.05)] border border-[rgba(255,77,77,0.4)] rounded-lg p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[rgba(255,77,77,0.3)] flex items-center justify-center text-[#FF4D4D] font-bold">!</div>
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-white mb-1">손절가 모니터링</p>
+                              <p className="text-xs text-[#CFCFCF]">손절가 접근 시 즉시 알림</p>
+                              <button className="mt-2 text-xs text-[#FF4D4D] underline">알림 설정하기</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <AiReportViewer report={aiReport.content || ''} />
-              </div>
+
+                {/* 상세 AI 분석 리포트 */}
+                <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8">
+                  <div className="flex justify-between items-center mb-5 sm:mb-6">
+                    <h2 className="text-xl sm:text-2xl font-bold text-white">AI 분석 리포트 (상세)</h2>
+                    <span className="text-sm sm:text-base text-[#CFCFCF] font-medium">
+                      {new Date(aiReport.createdAt).toLocaleString('ko-KR')}
+                    </span>
+                  </div>
+                  <AiReportViewer report={aiReport.content || ''} />
+                </div>
+              </>
             ) : (
               <div className="glass-panel rounded-xl p-6 sm:p-8">
                 <div className="text-center py-6 sm:py-8">

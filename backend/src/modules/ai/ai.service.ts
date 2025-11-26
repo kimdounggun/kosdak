@@ -70,15 +70,15 @@ export class AiService {
           messages: [
             {
               role: 'system',
-              content: '당신은 20년 경력의 한국 주식 시장 전문 애널리스트입니다. 기술적 분석을 기반으로 구체적이고 실용적인 투자 전략을 제공합니다. 항상 명확한 가격대(진입가, 손절가, 목표가)를 제시하며, 일관된 형식으로 분석합니다.',
+              content: '당신은 금융 트레이딩 분석 모델입니다. 수치 기반 사실만 작성하며, 모든 판단에는 구체적인 근거를 명시합니다. 확률 계산 시 반드시 계산 근거를 함께 제시합니다.',
             },
             {
               role: 'user',
               content: prompt,
             },
           ],
-          temperature: 0.5,  // 더 일관된 분석을 위해 낮춤
-          max_tokens: 1500,  // 더 상세한 분석을 위해 증가
+          temperature: 0.5,
+          max_tokens: 1500,
         });
 
         content = completion.choices[0].message.content || '';
@@ -145,7 +145,9 @@ export class AiService {
     const volumeRatio = latestIndicator.volumeRatio || 1;
     const volumeStatus = volumeRatio > 1.5 ? '급증' : volumeRatio > 1.0 ? '증가' : '감소';
 
-    let prompt = `당신은 20년 경력의 한국 주식 시장 전문 애널리스트입니다. 기술적 분석과 차트 패턴을 기반으로 실전 투자에 도움이 되는 구체적인 인사이트를 제공합니다.
+    let prompt = `당신은 금융 트레이딩 분석 모델입니다.
+
+출력은 반드시 수치 기반 사실만 작성하며 감정적·과장형 표현은 금지합니다.
 
 [종목 정보]
 • 종목명: ${symbol.name} (${symbol.code})
@@ -155,73 +157,84 @@ export class AiService {
 • 현재가: ${currentPrice.toLocaleString()}원
 • 등락: ${changeAmount >= 0 ? '+' : ''}${changeAmount.toLocaleString()}원 (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)
 • 시가: ${dayOpen.toLocaleString()}원
-• 고가: ${dayHigh.toLocaleString()}원 (상승폭 ${((dayHigh - dayOpen) / dayOpen * 100).toFixed(2)}%)
-• 저가: ${dayLow.toLocaleString()}원 (하락폭 ${((dayOpen - dayLow) / dayOpen * 100).toFixed(2)}%)
-• 당일 거래량: ${volumeToDisplay.toLocaleString()}주 (평균 대비 ${volumeRatio.toFixed(1)}배, ${volumeStatus})
+• 고가: ${dayHigh.toLocaleString()}원
+• 저가: ${dayLow.toLocaleString()}원
+• 당일 거래량: ${volumeToDisplay.toLocaleString()}주
 
 [기술적 지표]
 `;
 
     if (latestIndicator.rsi) {
-      prompt += `• RSI(14): ${latestIndicator.rsi.toFixed(2)} (${rsiStatus})\n`;
+      prompt += `• RSI(14): ${latestIndicator.rsi.toFixed(2)}\n`;
     }
     if (latestIndicator.macd && latestIndicator.macdSignal) {
-      prompt += `• MACD: ${latestIndicator.macd.toFixed(2)}, Signal: ${latestIndicator.macdSignal.toFixed(2)} (${macdSignal} 신호)\n`;
-      prompt += `  Histogram: ${(latestIndicator.macd - latestIndicator.macdSignal).toFixed(2)}\n`;
+      prompt += `• MACD: ${latestIndicator.macd.toFixed(2)}\n`;
+      prompt += `• Signal: ${latestIndicator.macdSignal.toFixed(2)}\n`;
+      prompt += `• Histogram: ${(latestIndicator.macd - latestIndicator.macdSignal).toFixed(2)}\n`;
     }
-    if (latestIndicator.ma5 && latestIndicator.ma20) {
-      prompt += `• 이동평균선: MA5(${ma5.toFixed(0)}), MA20(${ma20.toFixed(0)})`;
-      if (latestIndicator.ma60) {
-        prompt += `, MA60(${ma60.toFixed(0)})`;
-      }
-      prompt += ` → ${maAlignment}\n`;
-      prompt += `  현재가 vs MA20: ${currentPrice > ma20 ? '상회' : '하회'} (${((currentPrice - ma20) / ma20 * 100).toFixed(2)}%)\n`;
-    }
-    if (latestIndicator.bbUpper && latestIndicator.bbLower && latestIndicator.bbMiddle) {
-      prompt += `• 볼린저밴드: 상단(${latestIndicator.bbUpper.toFixed(0)}), 중간(${latestIndicator.bbMiddle.toFixed(0)}), 하단(${latestIndicator.bbLower.toFixed(0)})\n`;
-      const bbPosition = ((currentPrice - latestIndicator.bbLower) / (latestIndicator.bbUpper - latestIndicator.bbLower) * 100).toFixed(0);
-      prompt += `  현재 위치: ${bbPosition}% (0%=하단, 100%=상단)\n`;
-    }
-    if (latestIndicator.stochK && latestIndicator.stochD) {
-      prompt += `• Stochastic: K(${latestIndicator.stochK.toFixed(2)}), D(${latestIndicator.stochD.toFixed(2)})\n`;
+    if (latestIndicator.ma20 && latestIndicator.ma60) {
+      prompt += `• MA20: ${ma20.toFixed(0)}원\n`;
+      prompt += `• MA60: ${ma60.toFixed(0)}원\n`;
+      prompt += `• 현재가 vs MA20: ${((currentPrice - ma20) / ma20 * 100).toFixed(2)}%\n`;
     }
 
     prompt += `
-[최근 가격 동향]
-• 최근 ${Math.min(candles.length, 10)}개 봉 데이터 분석 가능
-• 5분봉 기준 단기 추세 파악
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+분석 기준 규칙은 다음을 따르십시오:
+
+📌 RSI 해석 기준:
+- 30 이하: 강한 매수 신호
+- 30~45: 매수 우위
+- 45~55: 중립
+- 55~70: 상승 지속 가능성
+- 70 이상: 과열, 조정 가능성
+
+📌 MACD 해석 기준:
+- Signal 상향돌파: 매수 신호
+- Signal 하향돌파: 매도 신호
+- Histogram 증가: 상승 모멘텀 강화
+- Histogram 감소: 전환 가능성
+
+📌 이평선 판단 기준:
+- 가격 > MA20 & MA20 > MA60 → 상승 추세
+- MA20 횡보 → 관망
+- 가격 < MA20 < MA60 → 하락 추세
+
+📌 상승 확률 산출 방식:
+- RSI: 30%
+- MACD: 40%
+- 이동평균선: 30%
+최종 확률 = 세 항목 점수를 합산 후 %로 표시.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-반드시 아래 형식을 정확히 따라 분석하세요. 각 섹션 사이에 빈 줄을 추가하세요:
+아래 형식으로 출력하세요:
 
 1. 시장 포지션
-현재 추세는 [상승/하락/횡보]이며, [강도 설명]. [추가 설명 1-2문장]
+현재 추세는 [상승/하락/횡보]이며, 강도는 [약함/중간/강함]. [지표 근거 포함해 1~2문장]
 
 2. 핵심 매매 시그널
-- [지표1]: [판단 근거]
-- [지표2]: [판단 근거]
-- [지표3]: [판단 근거]
+- RSI: [수치 및 판단]
+- MACD: [수치, 방향 및 판단]
+- 이동평균선: [MA20/MA60 관계 및 판단]
 
-3. 리스크 요인
-- [리스크1 설명]
-- [리스크2 설명]
-
-4. 실전 투자 전략
+3. 실전 투자 전략
 권장 포지션: [강력 매수/매수/관망/주의/매도]
-적정 진입가: [구체적 금액]원 (현재가 대비 [±X]%)
-손절가: [구체적 금액]원 (-[X]%)
-1차 목표가: [구체적 금액]원 (+[X]%)
-2차 목표가: [구체적 금액]원 (+[X]%)
+상승 확률: [X]% (근거: [RSI 구간 판단] + [MACD 방향] + [이평선 배열])
+리스크 레벨: [낮음/중간/높음]
+진입가: ${currentPrice.toLocaleString()}원 (현재가 기준)
+손절가: [구체적 금액]원
+1차 목표가: [구체적 금액]원
+2차 목표가: [구체적 금액]원
 보유 기간: [단기/중기/장기]
 
-5. 한줄 요약
-[30자 이내 핵심 메시지]
+예시) 상승 확률: 70% (근거: RSI 상승 구간 + MACD 상향돌파 + MA 정배열)
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. 정량적 전망 요약
+[한 문장 결론 + 주의 문장 포함]
 
-[중요 고지사항]
-이 분석은 20분 지연 시세를 기반으로 하며, 투자 권유가 아닌 참고 정보 제공 목적입니다. 최종 투자 판단은 본인의 책임입니다.
+※ 본 분석은 20분 지연 시세 데이터 기반으로 제공되며 투자 판단 책임은 사용자에게 있습니다.
 `;
 
     return prompt;
