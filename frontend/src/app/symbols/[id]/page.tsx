@@ -245,7 +245,13 @@ export default function SymbolDetailPage() {
       bearish: 50, 
       bullishCount: 0, 
       totalCount: 0,
-      signals: []
+      bullishPercentage: 50,
+      signals: [],
+      rsiStatus: '데이터 없음',
+      macdStatus: '데이터 없음',
+      ma5Status: '데이터 없음',
+      ma20Status: '데이터 없음',
+      stochKStatus: '데이터 없음'
     }
 
     let bullishSignals = 0
@@ -288,44 +294,67 @@ export default function SymbolDetailPage() {
     }
 
     const bullishPercent = totalSignals > 0 ? (bullishSignals / totalSignals * 100) : 50
+    
+    // 각 지표별 상태 추가
+    const rsiStatus = indicators.rsi > 50 ? 'RSI 상승세' : 'RSI 하락세'
+    const macdStatus = indicators.macd && indicators.macdSignal && indicators.macd > indicators.macdSignal 
+      ? 'MACD 상승세' : 'MACD 하락세'
+    const ma5Status = indicators.ma5 && indicators.ma20 && indicators.ma5 > indicators.ma20 
+      ? '5일선 상승세' : '5일선 하락세'
+    const ma20Status = indicators.ma20 && candles[0] && candles[0].close > indicators.ma20 
+      ? '20일선 상승 돌파' : '20일선 하락'
+    const stochKStatus = indicators.stochK && indicators.stochK > 50 
+      ? '스토캐스틱 상승세' : '스토캐스틱 하락세'
+    
     return {
       bullish: Math.round(bullishPercent),
       bearish: Math.round(100 - bullishPercent),
       bullishCount: bullishSignals,
       totalCount: totalSignals,
-      signals
+      bullishPercentage: Math.round(bullishPercent),
+      signals,
+      rsiStatus,
+      macdStatus,
+      ma5Status,
+      ma20Status,
+      stochKStatus
     }
   }
 
-  // Widget 3: AI 신뢰도 분석
+  // Widget 3: AI 신뢰도 분석 (100% 실제 데이터)
   const calculateConfidenceMetrics = () => {
-    const defaults = { confidence: 65, accuracy: 70, consistency: 73 }
+    if (!aiReport && !indicators) {
+      return { confidence: null, accuracy: null, consistency: null }
+    }
 
-    if (!aiReport && !indicators) return defaults
-
-    let confidence = 65
+    // 1. 신뢰도: AI 리포트 메타데이터 또는 RSI 기반 계산
+    let confidence = null
     if (aiReport?.metadata?.confidence) {
       confidence = Math.round(aiReport.metadata.confidence * 100)
     } else if (indicators?.rsi) {
+      // RSI가 50에서 멀수록 신뢰도 높음 (명확한 방향성)
       const rsiDeviation = Math.abs(indicators.rsi - 50)
       confidence = Math.min(95, 50 + rsiDeviation)
     }
 
+    // 2. 정확도: 신호 일치도 (bullish vs bearish 중 더 큰 값)
     const regime = calculateSignalRegime()
     const accuracy = Math.max(regime.bullish, regime.bearish)
 
-    let consistency = 73
+    // 3. 일관성: 최근 캔들 방향성 일치도 (100% 실제 계산)
+    let consistency = null
     if (candles && candles.length >= 10) {
       const recentCandles = candles.slice(0, 10)
       const upCandles = recentCandles.filter(c => c.close > c.open).length
       const downCandles = recentCandles.filter(c => c.close < c.open).length
+      // 상승 or 하락 캔들 중 더 많은 쪽 비율
       consistency = Math.max(upCandles, downCandles) * 10
     }
 
     return {
-      confidence: Math.round(confidence),
+      confidence: confidence !== null ? Math.round(confidence) : null,
       accuracy: Math.round(accuracy),
-      consistency: Math.round(consistency)
+      consistency: consistency !== null ? Math.round(consistency) : null
     }
   }
 
@@ -375,44 +404,6 @@ export default function SymbolDetailPage() {
     }
   }
 
-  // Widget 5: 매수 조건 체크
-  const calculateEntryConditions = () => {
-    const defaults = {
-      momentum: { status: '미충족', color: '#FF4D4D' },
-      volatility: { status: '미충족', color: '#FF4D4D' },
-      volume: { status: '미충족', color: '#FF4D4D' },
-      pattern: { status: '미충족', color: '#FF4D4D' }
-    }
-
-    if (!indicators) return defaults
-
-    const momentum = indicators.rsi && indicators.rsi >= 40 && indicators.rsi <= 70
-      ? { status: '충족', color: '#00E5A8' }
-      : { status: '미충족', color: '#FF4D4D' }
-
-    let volatility = { status: '미충족', color: '#FF4D4D' }
-    if (indicators.bbUpper && indicators.bbLower && candles && candles[0]) {
-      const price = candles[0].close
-      const inRange = price > indicators.bbLower && price < indicators.bbUpper
-      const nearMiddle = indicators.bbMiddle && Math.abs(price - indicators.bbMiddle) / indicators.bbMiddle < 0.02
-
-      if (inRange && nearMiddle) {
-        volatility = { status: '충족', color: '#00E5A8' }
-      } else if (inRange) {
-        volatility = { status: '절반', color: '#CFCFCF' }
-      }
-    }
-
-    const volume = indicators.volumeRatio && indicators.volumeRatio > 1.0
-      ? { status: '충족', color: '#00E5A8' }
-      : { status: '미충족', color: '#FF4D4D' }
-
-    const pattern = indicators.macdHistogram && indicators.macdHistogram > 0
-      ? { status: '충족', color: '#00E5A8' }
-      : { status: '미충족', color: '#FF4D4D' }
-
-    return { momentum, volatility, volume, pattern }
-  }
 
   // 주간 분석 생성 (AI 기반)
   const generateWeeklyAnalysis = () => {
@@ -517,47 +508,91 @@ export default function SymbolDetailPage() {
     }
   }
 
-  // 투자 기간별 스윙 전략 생성 (AI 기반)
+  // 투자 기간별 스윙 전략 생성 (AI 기반 - 상황별 시나리오 포함)
   const generateSwingStrategy = () => {
     if (!indicators || !candles || candles.length === 0) return null
     
     const currentPrice = candles[0].close
     const regime = calculateSignalRegime()
     const isBullish = regime.bullishCount > regime.totalCount / 2
+    const bullishStrength = regime.bullishPercentage
+    
+    // AI 기반 목표가/손절가 계산
+    const volatility = indicators.bbUpper && indicators.bbLower && indicators.bbMiddle
+      ? ((indicators.bbUpper - indicators.bbLower) / indicators.bbMiddle * 100)
+      : 3
     
     if (investmentPeriod === 'swing') {
       // 3~7일 단기 스윙 전략
       const targetPrice1 = currentPrice * (isBullish ? 1.03 : 0.97)
       const targetPrice2 = currentPrice * (isBullish ? 1.05 : 0.95)
+      const stopLoss = currentPrice * 0.97  // -3% (AI 리포트와 일치)
+      const sidewaysRange = { low: currentPrice * 0.98, high: currentPrice * 1.02 }
       
       return {
         title: '3~7일 스윙 전략',
         steps: [
           {
             day: '1일차',
-            title: '첫 진입',
-            ratio: 30,
-            price: currentPrice,
-            action: `현재가 ${currentPrice.toLocaleString()}원에서 소량 진입`,
-            description: '시장 반응 확인 및 추세 검증'
+            title: '첫 진입 (30%)',
+            scenarios: [
+              {
+                type: 'entry',
+                condition: '진입 시점',
+                action: `현재가 ${currentPrice.toLocaleString()}원에서 소량 진입 (30%)`,
+                reason: bullishStrength >= 60 
+                  ? `매수 신호 ${bullishStrength}% - 진입 적정` 
+                  : `신호 강도 ${bullishStrength}% - 신중한 진입`
+              }
+            ]
           },
           {
             day: '2~3일차',
             title: '추세 확인',
-            ratio: 30,
-            price: targetPrice1,
-            action: isBullish 
-              ? `${targetPrice1.toLocaleString()}원 돌파 시 추가 진입`
-              : `${targetPrice1.toLocaleString()}원 지지 확인 시 추가`,
-            description: isBullish ? '상승 지속 시 추가 매수, 하락 시 관망' : '반등 확인 후 추가 매수'
+            scenarios: [
+              {
+                type: 'bullish',
+                condition: `상승 시 (${targetPrice1.toLocaleString()}원 돌파)`,
+                action: `추가 30% 매수`,
+                reason: '추세 강화 확인, 목표가 달성 가능성 증가'
+              },
+              {
+                type: 'sideways',
+                condition: `횡보 시 (${sidewaysRange.low.toLocaleString()}~${sidewaysRange.high.toLocaleString()}원)`,
+                action: `관망 유지`,
+                reason: '방향성 불명확, 돌파/이탈 대기. 3일 이상 횡보 시 청산 검토'
+              },
+              {
+                type: 'bearish',
+                condition: `하락 시 (${(currentPrice * 0.97).toLocaleString()}원 하회)`,
+                action: `손절 준비`,
+                reason: '추세 전환 신호, 추가 하락 시 손절가 도달 주의'
+              }
+            ]
           },
           {
             day: '5~7일차',
-            title: '청산 판단',
-            ratio: 0,
-            price: targetPrice2,
-            action: `목표가 ${targetPrice2.toLocaleString()}원 도달 시 분할 익절`,
-            description: `손절가: ${(currentPrice * 0.95).toLocaleString()}원 (-5%)`
+            title: '최종 판단',
+            scenarios: [
+              {
+                type: 'target',
+                condition: `목표 달성 (${targetPrice2.toLocaleString()}원 이상)`,
+                action: `분할 익절 (50%→30%→20%)`,
+                reason: `목표 수익률 ${isBullish ? '+5%' : '-5%'} 달성`
+              },
+              {
+                type: 'hold',
+                condition: `횡보 지속 (${sidewaysRange.low.toLocaleString()}~${targetPrice1.toLocaleString()}원)`,
+                action: `7일차 전량 청산`,
+                reason: '기회비용 고려, 다음 종목 탐색'
+              },
+              {
+                type: 'stop',
+                condition: `손절가 도달 (${stopLoss.toLocaleString()}원 하회)`,
+                action: `즉시 전량 청산`,
+                reason: '손실 확정 -3%, 재진입 타이밍 재분석'
+              }
+            ]
           }
         ]
       }
@@ -565,35 +600,73 @@ export default function SymbolDetailPage() {
       // 2~4주 중기 전략
       const targetPrice1 = currentPrice * (isBullish ? 1.05 : 0.95)
       const targetPrice2 = currentPrice * (isBullish ? 1.12 : 0.92)
+      const stopLoss = currentPrice * 0.92
+      const sidewaysRange = { low: currentPrice * 0.97, high: currentPrice * 1.03 }
       
       return {
         title: '2~4주 중기 전략',
         steps: [
           {
             day: '1주차',
-            title: '초기 진입',
-            ratio: 40,
-            price: currentPrice,
-            action: `현재가 ${currentPrice.toLocaleString()}원 부근에서 진입`,
-            description: '현재 추세 확인 후 첫 진입, 저점 매수 기회 포착'
+            title: '초기 진입 (40%)',
+            scenarios: [
+              {
+                type: 'entry',
+                condition: '진입 시점',
+                action: `현재가 ${currentPrice.toLocaleString()}원 부근 40% 진입`,
+                reason: bullishStrength >= 60
+                  ? '중기 상승 추세 예상, 분할 진입 시작'
+                  : '신중한 진입, 추세 전환 대기'
+              }
+            ]
           },
           {
             day: '2~3주차',
             title: '추가 진입 및 모니터링',
-            ratio: 40,
-            price: targetPrice1,
-            action: isBullish
-              ? `추세 강화 시 ${targetPrice1.toLocaleString()}원 부근에서 추가 40%`
-              : `${targetPrice1.toLocaleString()}원 반등 확인 후 추가`,
-            description: '주간 흐름 관찰 및 이동평균선 지지 확인'
+            scenarios: [
+              {
+                type: 'bullish',
+                condition: `상승 시 (${targetPrice1.toLocaleString()}원 돌파)`,
+                action: `추가 40% 매수`,
+                reason: '추세 강화, 5일/20일 이평선 정배열 확인'
+              },
+              {
+                type: 'sideways',
+                condition: `횡보 시 (${sidewaysRange.low.toLocaleString()}~${sidewaysRange.high.toLocaleString()}원)`,
+                action: `추가 매수 보류`,
+                reason: '방향성 불명확, 2주 이상 횡보 시 일부 청산 검토'
+              },
+              {
+                type: 'bearish',
+                condition: `하락 시 (${(currentPrice * 0.93).toLocaleString()}원 하회)`,
+                action: `손절 라인 접근`,
+                reason: '20일 이평선 이탈, 추세 전환 신호'
+              }
+            ]
           },
           {
             day: '4주차',
-            title: '수익 실현 또는 홀딩',
-            ratio: 0,
-            price: targetPrice2,
-            action: `목표 ${targetPrice2.toLocaleString()}원 달성 시 분할 익절`,
-            description: `추세 유지 시 홀딩 검토, 손절선: ${(currentPrice * 0.92).toLocaleString()}원 (-8%)`
+            title: '최종 판단',
+            scenarios: [
+              {
+                type: 'target',
+                condition: `목표 달성 (${targetPrice2.toLocaleString()}원 이상)`,
+                action: `분할 익절 (60%→30%→10%)`,
+                reason: `목표 수익률 ${isBullish ? '+12%' : '-8%'} 달성`
+              },
+              {
+                type: 'hold',
+                condition: `추세 유지 (${targetPrice1.toLocaleString()}원 이상)`,
+                action: `홀딩 또는 부분 익절`,
+                reason: '중기 추세 지속, 목표가 재상향 검토'
+              },
+              {
+                type: 'stop',
+                condition: `손절가 도달 (${stopLoss.toLocaleString()}원 하회)`,
+                action: `전량 청산`,
+                reason: '손실 확정 -8%, 재진입 전략 수립'
+              }
+            ]
           }
         ]
       }
@@ -601,6 +674,8 @@ export default function SymbolDetailPage() {
       // 1~3개월 장기 전략
       const targetPrice1 = currentPrice * 0.95
       const targetPrice2 = currentPrice * (isBullish ? 1.20 : 1.10)
+      const stopLoss = currentPrice * 0.85
+      const ma20 = indicators.ma20 || currentPrice
       
       return {
         title: '1~3개월 장기 전략',
@@ -608,26 +683,68 @@ export default function SymbolDetailPage() {
           {
             day: '1개월차',
             title: '저점 분할 매수',
-            ratio: 0,
-            price: targetPrice1,
-            action: `${targetPrice1.toLocaleString()}원 부근에서 3~4회 분할`,
-            description: '장기 관점에서 평균 단가 낮추기, 각 회차 25% 비중'
+            scenarios: [
+              {
+                type: 'entry',
+                condition: `저점 진입 (${targetPrice1.toLocaleString()}원 이하)`,
+                action: `3~4회 분할 매수 (각 25%)`,
+                reason: '장기 관점 평균 단가 낮추기, 변동성 분산'
+              },
+              {
+                type: 'sideways',
+                condition: `현재가 유지 (${currentPrice.toLocaleString()}원 부근)`,
+                action: `2~3회 분할 매수`,
+                reason: '횡보 구간 활용, 저점 매수 기회 탐색'
+              }
+            ]
           },
           {
             day: '2개월차',
             title: '추세 전환 대기',
-            ratio: 0,
-            price: indicators.ma20 || currentPrice,
-            action: `20일 이평선 ${(indicators.ma20 || currentPrice).toLocaleString()}원 돌파 확인`,
-            description: '월간 추세 확인, 기업 실적 및 뉴스 모니터링'
+            scenarios: [
+              {
+                type: 'bullish',
+                condition: `20일선 돌파 (${ma20.toLocaleString()}원 이상)`,
+                action: `추세 확인, 홀딩 유지`,
+                reason: '중장기 상승 전환, 목표가 상향 조정'
+              },
+              {
+                type: 'sideways',
+                condition: `박스권 횡보 (${(currentPrice * 0.95).toLocaleString()}~${(currentPrice * 1.05).toLocaleString()}원)`,
+                action: `관망 유지`,
+                reason: '기업 실적/뉴스 모니터링, 돌파 대기'
+              },
+              {
+                type: 'bearish',
+                condition: `추세 약화 (20일선 하회)`,
+                action: `손절 라인 점검`,
+                reason: '장기 하락 전환 가능성, 리스크 관리'
+              }
+            ]
           },
           {
             day: '3개월차',
             title: '수익 실현 전략',
-            ratio: 0,
-            price: targetPrice2,
-            action: `목표 수익률 15~30% 달성 시 (${targetPrice2.toLocaleString()}원)`,
-            description: '단계적 청산: 50% → 30% → 20% 순차 익절'
+            scenarios: [
+              {
+                type: 'target',
+                condition: `목표 달성 (${targetPrice2.toLocaleString()}원, +${isBullish ? '20' : '10'}%)`,
+                action: `단계적 청산 (50%→30%→20%)`,
+                reason: '장기 목표 달성, 수익 확정'
+              },
+              {
+                type: 'hold',
+                condition: `목표 미달 (+5~10%)`,
+                action: `추가 1개월 홀딩 검토`,
+                reason: '장기 추세 유지, 목표가 재설정'
+              },
+              {
+                type: 'stop',
+                condition: `손절가 도달 (${stopLoss.toLocaleString()}원, -15%)`,
+                action: `전량 청산`,
+                reason: '장기 하락 추세 확정, 손실 제한'
+              }
+            ]
           }
         ]
       }
@@ -716,7 +833,7 @@ export default function SymbolDetailPage() {
       shortTerm = '상승 가능성 높음'
       
       if (investmentPeriod === 'swing') {
-        recommendation = `향후 1~3일 내 분할 진입 전략 고려 (현재가 ${candles[0].close.toLocaleString()}원)`
+        recommendation = `${period} 기간 내 1일차 진입 전략 고려 (현재가 ${candles[0].close.toLocaleString()}원)`
       } else if (investmentPeriod === 'medium') {
         recommendation = `이번 주 내 첫 진입 후 2~3주차 추가 매수 (목표: +10~12%)`
       } else {
@@ -730,7 +847,7 @@ export default function SymbolDetailPage() {
       shortTerm = '소폭 상승 가능성'
       
       if (investmentPeriod === 'swing') {
-        recommendation = `이번 주 내 소량 진입 후 추세 확인 (3~5일 목표)`
+        recommendation = `${period} 기간 내 소량 진입 후 추세 확인`
       } else if (investmentPeriod === 'medium') {
         recommendation = `1주차 소량 진입 후 2주차 추가 검토 (목표: +7~10%)`
       } else {
@@ -743,7 +860,7 @@ export default function SymbolDetailPage() {
       actionColor = '#CFCFCF'
       shortTerm = '방향성 불명확'
       recommendation = investmentPeriod === 'swing'
-        ? '명확한 추세 확인 후 진입 (2~3일 관찰)'
+        ? `${period} 내 명확한 추세 확인 후 진입`
         : investmentPeriod === 'medium'
         ? '1주일 추세 확인 후 재평가'
         : '월간 추세 전환 시점 대기'
@@ -783,7 +900,6 @@ export default function SymbolDetailPage() {
   const signalRegime = calculateSignalRegime()
   const confidenceMetrics = calculateConfidenceMetrics()
   const marketStrength = calculateMarketStrength()
-  const entryConditions = calculateEntryConditions()
   const aiConclusion = calculateAiConclusion()
 
   // 추세 방향 계산 (한글)
@@ -890,11 +1006,17 @@ export default function SymbolDetailPage() {
               </p>
               <div className="flex items-center gap-1.5 text-xs sm:text-sm">
                 <span className="text-[#CFCFCF]">신뢰도</span>
-                <span className="text-white font-semibold">{confidenceMetrics.confidence}%</span>
-                <span className="text-[#CFCFCF]">
-                  {confidenceMetrics.confidence >= 80 ? '높음' : 
-                   confidenceMetrics.confidence >= 60 ? '보통' : '낮음'}
-                </span>
+                {confidenceMetrics.confidence !== null ? (
+                  <>
+                    <span className="text-white font-semibold">{confidenceMetrics.confidence}%</span>
+                    <span className="text-[#CFCFCF]">
+                      {confidenceMetrics.confidence >= 80 ? '높음' : 
+                       confidenceMetrics.confidence >= 60 ? '보통' : '낮음'}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[#CFCFCF]">데이터 없음</span>
+                )}
               </div>
             </div>
 
@@ -1331,15 +1453,23 @@ export default function SymbolDetailPage() {
                   {/* 핵심 수치 3개 메트릭 - 시각적 강화 */}
                   <div className="grid grid-cols-3 gap-3 mb-5">
                     <div className="text-center bg-[rgba(0,229,168,0.1)] border border-[rgba(0,229,168,0.3)] rounded-lg p-4 relative overflow-hidden">
-                      <div 
-                        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[rgba(0,229,168,0.2)] to-transparent"
-                        style={{ height: `${confidenceMetrics.confidence}%` }}
-                      ></div>
+                      {confidenceMetrics.confidence !== null && (
+                        <div 
+                          className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[rgba(0,229,168,0.2)] to-transparent"
+                          style={{ height: `${confidenceMetrics.confidence}%` }}
+                        ></div>
+                      )}
                       <p className="text-xs text-[#CFCFCF] mb-2 relative z-10">신뢰도</p>
-                      <p className="text-2xl font-bold text-[#00E5A8] relative z-10">{confidenceMetrics.confidence}%</p>
-                      <p className="text-xs text-[#00E5A8] mt-1 relative z-10">
-                        {confidenceMetrics.confidence >= 70 ? '높음' : confidenceMetrics.confidence >= 50 ? '보통' : '낮음'}
-                      </p>
+                      {confidenceMetrics.confidence !== null ? (
+                        <>
+                          <p className="text-2xl font-bold text-[#00E5A8] relative z-10">{confidenceMetrics.confidence}%</p>
+                          <p className="text-xs text-[#00E5A8] mt-1 relative z-10">
+                            {confidenceMetrics.confidence >= 70 ? '높음' : confidenceMetrics.confidence >= 50 ? '보통' : '낮음'}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-[#CFCFCF] relative z-10">데이터 없음</p>
+                      )}
                     </div>
                     <div className="text-center bg-[rgba(255,184,0,0.1)] border border-[rgba(255,184,0,0.3)] rounded-lg p-4">
                       <p className="text-xs text-[#CFCFCF] mb-2">리스크</p>
@@ -1395,39 +1525,124 @@ export default function SymbolDetailPage() {
                           <p className="text-sm font-semibold text-white">{strategy.title}</p>
                         </div>
                         
-                        <div className="space-y-3">
-                          {strategy.steps.map((step, index) => {
+                        <div className="space-y-4">
+                          {strategy.steps.map((step, stepIndex) => {
                             const colors = [
-                              { bg: 'rgba(0,229,168,0.1)', bgEnd: 'rgba(0,229,168,0.05)', border: '#00E5A8', circle: '#00E5A8' },
-                              { bg: 'rgba(0,209,255,0.1)', bgEnd: 'rgba(0,209,255,0.05)', border: '#00D1FF', circle: '#00D1FF' },
-                              { bg: 'rgba(255,184,0,0.1)', bgEnd: 'rgba(255,184,0,0.05)', border: '#FFB800', circle: '#FFB800' }
+                              { bg: 'rgba(0,229,168,0.1)', border: '#00E5A8', circle: '#00E5A8' },
+                              { bg: 'rgba(0,209,255,0.1)', border: '#00D1FF', circle: '#00D1FF' },
+                              { bg: 'rgba(255,184,0,0.1)', border: '#FFB800', circle: '#FFB800' }
                             ]
-                            const color = colors[index % 3]
+                            const color = colors[stepIndex % 3]
                             
                             return (
-                              <div 
-                                key={index}
-                                className="bg-gradient-to-r rounded-r-lg p-4"
-                                style={{
-                                  backgroundImage: `linear-gradient(to right, ${color.bg}, ${color.bgEnd})`,
-                                  borderLeft: `4px solid ${color.border}`
-                                }}
-                              >
-                                <div className="flex items-start gap-3">
+                              <div key={stepIndex} className="space-y-2">
+                                {/* 단계 헤더 */}
+                                <div className="flex items-center gap-2">
                                   <div 
-                                    className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm"
+                                    className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-xs"
                                     style={{ backgroundColor: color.circle }}
                                   >
-                                    {index + 1}
+                                    {stepIndex + 1}
                                   </div>
-                                  <div className="flex-1">
-                                    <p className="text-sm font-semibold text-white mb-1">
-                                      {step.day}: {step.title}
-                                      {step.ratio > 0 && <span className="ml-1 text-[#00E5A8]">({step.ratio}%)</span>}
-                                    </p>
-                                    <p className="text-xs text-[#00D1FF] mb-1">{step.action}</p>
-                                    <p className="text-xs text-[#CFCFCF]">{step.description}</p>
-                                  </div>
+                                  <p className="text-sm font-bold text-white">
+                                    {step.day}: {step.title}
+                                  </p>
+                                </div>
+                                
+                                {/* 시나리오별 대응 */}
+                                <div className="ml-9 space-y-2">
+                                  {step.scenarios.map((scenario, scenarioIndex) => {
+                                    const scenarioIcons = {
+                                      'entry': {
+                                        svg: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />,
+                                        bg: 'rgba(0,229,168,0.15)',
+                                        border: 'rgba(0,229,168,0.3)',
+                                        icon: '#00E5A8',
+                                        text: '#00E5A8'
+                                      },
+                                      'bullish': {
+                                        svg: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />,
+                                        bg: 'rgba(0,229,168,0.15)',
+                                        border: 'rgba(0,229,168,0.3)',
+                                        icon: '#00E5A8',
+                                        text: '#00E5A8'
+                                      },
+                                      'sideways': {
+                                        svg: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />,
+                                        bg: 'rgba(255,184,0,0.15)',
+                                        border: 'rgba(255,184,0,0.3)',
+                                        icon: '#FFB800',
+                                        text: '#FFB800'
+                                      },
+                                      'bearish': {
+                                        svg: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />,
+                                        bg: 'rgba(255,77,77,0.15)',
+                                        border: 'rgba(255,77,77,0.3)',
+                                        icon: '#FF4D4D',
+                                        text: '#FF4D4D'
+                                      },
+                                      'target': {
+                                        svg: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />,
+                                        bg: 'rgba(0,229,168,0.15)',
+                                        border: 'rgba(0,229,168,0.3)',
+                                        icon: '#00E5A8',
+                                        text: '#00E5A8'
+                                      },
+                                      'hold': {
+                                        svg: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />,
+                                        bg: 'rgba(207,207,207,0.15)',
+                                        border: 'rgba(207,207,207,0.3)',
+                                        icon: '#CFCFCF',
+                                        text: '#CFCFCF'
+                                      },
+                                      'stop': {
+                                        svg: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />,
+                                        bg: 'rgba(255,77,77,0.15)',
+                                        border: 'rgba(255,77,77,0.3)',
+                                        icon: '#FF4D4D',
+                                        text: '#FF4D4D'
+                                      }
+                                    }
+                                    const scenarioStyle = scenarioIcons[scenario.type] || scenarioIcons['hold']
+                                    
+                                    return (
+                                      <div 
+                                        key={scenarioIndex}
+                                        className="p-3 rounded-lg transition-all hover:shadow-lg"
+                                        style={{
+                                          backgroundColor: scenarioStyle.bg,
+                                          border: `1px solid ${scenarioStyle.border}`
+                                        }}
+                                      >
+                                        <div className="flex items-start gap-3">
+                                          <div 
+                                            className="flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center"
+                                            style={{ backgroundColor: 'rgba(0,0,0,0.3)' }}
+                                          >
+                                            <svg 
+                                              className="w-4 h-4" 
+                                              fill="none" 
+                                              stroke={scenarioStyle.icon} 
+                                              viewBox="0 0 24 24"
+                                            >
+                                              {scenarioStyle.svg}
+                                            </svg>
+                                          </div>
+                                          <div className="flex-1">
+                                            <p className="text-xs font-semibold text-[#CFCFCF] mb-1">
+                                              {scenario.condition}
+                                            </p>
+                                            <p className="text-sm font-bold mb-1" style={{ color: scenarioStyle.text }}>
+                                              → {scenario.action}
+                                            </p>
+                                            <p className="text-xs text-[#CFCFCF]/80">
+                                              {scenario.reason}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
                                 </div>
                               </div>
                             )
@@ -1541,31 +1756,35 @@ export default function SymbolDetailPage() {
                 )}
               </div>
 
-              {/* Data Table - 기간별 변화율 */}
-              <div className="space-y-1.5 text-xs sm:text-sm">
-                <div className="grid grid-cols-3 gap-2 pb-1.5 border-b border-[rgba(255,255,255,0.05)]">
+              {/* Data Table - 기간별 변화율 (3컬럼) */}
+              <div className="space-y-1.5 text-[10px] sm:text-xs">
+                <div className="grid grid-cols-4 gap-1 pb-1.5 border-b border-[rgba(255,255,255,0.05)]">
                   <span className="text-[#CFCFCF] font-semibold text-left">기간</span>
                   <span className="text-[#CFCFCF] font-semibold text-right">당시</span>
+                  <span className="text-[#CFCFCF] font-semibold text-right">현재</span>
                   <span className="text-[#CFCFCF] font-semibold text-right">변화</span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 py-0.5 border-b border-[rgba(255,255,255,0.03)]">
-                  <span className="text-[#CFCFCF] font-light text-left">15분</span>
-                  <span className="text-white font-semibold text-right tabular-nums text-[10px] sm:text-xs">{historicalChanges.min15Price?.toLocaleString() || '-'}</span>
-                  <span className={`text-right font-semibold tabular-nums text-[10px] sm:text-xs ${Number(historicalChanges.min15) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                <div className="grid grid-cols-4 gap-1 py-0.5 border-b border-[rgba(255,255,255,0.03)]">
+                  <span className="text-[#CFCFCF] font-light text-left text-[9px] sm:text-[10px]">15분</span>
+                  <span className="text-white font-semibold text-right tabular-nums">{historicalChanges.min15Price?.toLocaleString() || '-'}</span>
+                  <span className="text-[#00E5A8] font-semibold text-right tabular-nums">{historicalChanges.current?.toLocaleString() || '-'}</span>
+                  <span className={`text-right font-bold tabular-nums ${Number(historicalChanges.min15) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                     {Number(historicalChanges.min15) >= 0 ? '+' : ''}{historicalChanges.min15}%
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 py-0.5 border-b border-[rgba(255,255,255,0.03)]">
-                  <span className="text-[#CFCFCF] font-light text-left">1시간</span>
-                  <span className="text-white font-semibold text-right tabular-nums text-[10px] sm:text-xs">{historicalChanges.hour1Price?.toLocaleString() || '-'}</span>
-                  <span className={`text-right font-semibold tabular-nums text-[10px] sm:text-xs ${Number(historicalChanges.hour1) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                <div className="grid grid-cols-4 gap-1 py-0.5 border-b border-[rgba(255,255,255,0.03)]">
+                  <span className="text-[#CFCFCF] font-light text-left text-[9px] sm:text-[10px]">1시간</span>
+                  <span className="text-white font-semibold text-right tabular-nums">{historicalChanges.hour1Price?.toLocaleString() || '-'}</span>
+                  <span className="text-[#00E5A8] font-semibold text-right tabular-nums">{historicalChanges.current?.toLocaleString() || '-'}</span>
+                  <span className={`text-right font-bold tabular-nums ${Number(historicalChanges.hour1) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                     {Number(historicalChanges.hour1) >= 0 ? '+' : ''}{historicalChanges.hour1}%
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 py-0.5">
-                  <span className="text-[#CFCFCF] font-light text-left">4시간</span>
-                  <span className="text-white font-semibold text-right tabular-nums text-[10px] sm:text-xs">{historicalChanges.hour4Price?.toLocaleString() || '-'}</span>
-                  <span className={`text-right font-semibold tabular-nums text-[10px] sm:text-xs ${Number(historicalChanges.hour4) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                <div className="grid grid-cols-4 gap-1 py-0.5">
+                  <span className="text-[#CFCFCF] font-light text-left text-[9px] sm:text-[10px]">4시간</span>
+                  <span className="text-white font-semibold text-right tabular-nums">{historicalChanges.hour4Price?.toLocaleString() || '-'}</span>
+                  <span className="text-[#00E5A8] font-semibold text-right tabular-nums">{historicalChanges.current?.toLocaleString() || '-'}</span>
+                  <span className={`text-right font-bold tabular-nums ${Number(historicalChanges.hour4) >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                     {Number(historicalChanges.hour4) >= 0 ? '+' : ''}{historicalChanges.hour4}%
                   </span>
                 </div>
@@ -1688,29 +1907,37 @@ export default function SymbolDetailPage() {
                 )}
               </div>
 
-              {/* Data Table - 수학적 정렬 */}
-              <div className="space-y-2 text-base">
-                <div className="grid grid-cols-3 gap-3 pb-2 border-b border-[rgba(255,255,255,0.05)]">
-                  <span className="text-[#CFCFCF] font-semibold text-left">지표</span>
-                  <span className="text-[#CFCFCF] font-semibold text-right">현재</span>
-                  <span className="text-[#CFCFCF] font-semibold text-right">평균</span>
+              {/* Data Table - 2열 구조 (평균 제거) */}
+              {confidenceMetrics.confidence !== null ? (
+                <div className="space-y-2 text-base">
+                  <div className="grid grid-cols-2 gap-3 pb-2 border-b border-[rgba(255,255,255,0.05)]">
+                    <span className="text-[#CFCFCF] font-semibold text-left">지표</span>
+                    <span className="text-[#CFCFCF] font-semibold text-right">수치</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
+                    <span className="text-[#CFCFCF] font-light text-left">신뢰도</span>
+                    <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">
+                      {confidenceMetrics.confidence !== null ? `${confidenceMetrics.confidence}%` : '데이터 없음'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
+                    <span className="text-[#CFCFCF] font-light text-left">정확도</span>
+                    <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">
+                      {confidenceMetrics.accuracy !== null ? `${confidenceMetrics.accuracy}%` : '데이터 없음'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 py-1">
+                    <span className="text-[#CFCFCF] font-light text-left">일관성</span>
+                    <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">
+                      {confidenceMetrics.consistency !== null ? `${confidenceMetrics.consistency}%` : '데이터 없음'}
+                    </span>
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
-                  <span className="text-[#CFCFCF] font-light text-left">신뢰도</span>
-                  <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">{confidenceMetrics.confidence}%</span>
-                  <span className="text-[#CFCFCF] text-right font-light tabular-nums">65%</span>
+              ) : (
+                <div className="flex items-center justify-center h-[100px] text-[#CFCFCF]">
+                  <p className="text-sm">데이터 없음</p>
                 </div>
-                <div className="grid grid-cols-3 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
-                  <span className="text-[#CFCFCF] font-light text-left">정확도</span>
-                  <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">{confidenceMetrics.accuracy}%</span>
-                  <span className="text-[#CFCFCF] text-right font-light tabular-nums">70%</span>
-                </div>
-                <div className="grid grid-cols-3 gap-3 py-1">
-                  <span className="text-[#CFCFCF] font-light text-left">일관성</span>
-                  <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">{confidenceMetrics.consistency}%</span>
-                  <span className="text-[#CFCFCF] text-right font-light tabular-nums">73%</span>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* 4. 시장 강도 지표 (Line Chart + Table) */}
@@ -1772,45 +1999,6 @@ export default function SymbolDetailPage() {
               </div>
             </div>
 
-            {/* 5. 매수 조건 체크 (Status Indicators) */}
-            <div className="glass-panel rounded-lg p-3 sm:p-4 col-span-1 sm:col-span-2">
-              <div className="mb-2">
-                <h3 className="text-sm sm:text-base font-bold text-white">매수 조건</h3>
-              </div>
-              <div className="text-xs sm:text-sm text-[#CFCFCF] mb-3 font-semibold">진입 조건</div>
-
-              {/* Status Indicators */}
-              <div className="space-y-2 sm:space-y-3">
-                <div className="flex items-center justify-between py-2 border-b border-white/10">
-                  <span className="text-xs sm:text-sm text-[#CFCFCF] font-semibold">모멘텀</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full" style={{ backgroundColor: entryConditions.momentum.color }}></div>
-                    <span className="text-xs sm:text-sm font-bold" style={{ color: entryConditions.momentum.color }}>{entryConditions.momentum.status}</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-white/10">
-                  <span className="text-xs sm:text-sm text-[#CFCFCF] font-semibold">변동성</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full" style={{ backgroundColor: entryConditions.volatility.color }}></div>
-                    <span className="text-xs sm:text-sm font-bold" style={{ color: entryConditions.volatility.color }}>{entryConditions.volatility.status}</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-white/10">
-                  <span className="text-xs sm:text-sm text-[#CFCFCF] font-semibold">거래량</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full" style={{ backgroundColor: entryConditions.volume.color }}></div>
-                    <span className="text-xs sm:text-sm font-bold" style={{ color: entryConditions.volume.color }}>{entryConditions.volume.status}</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between py-2">
-                  <span className="text-xs sm:text-sm text-[#CFCFCF] font-semibold">패턴</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full" style={{ backgroundColor: entryConditions.pattern.color }}></div>
-                    <span className="text-xs sm:text-sm font-bold" style={{ color: entryConditions.pattern.color }}>{entryConditions.pattern.status}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
 
           </div>
           )}
@@ -1820,4 +2008,5 @@ export default function SymbolDetailPage() {
     </DashboardLayout>
   )
 }
+
 
