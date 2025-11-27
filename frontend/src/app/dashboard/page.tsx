@@ -29,7 +29,6 @@ export default function DashboardPage() {
   const loadUserSymbols = async () => {
     try {
       const response = await api.get('/symbols/user/my-symbols')
-      console.log('User symbols response:', response.data)
       // symbolId가 null이 아닌 것만 필터링
       const validSymbols = response.data.filter((userSymbol: any) => userSymbol.symbolId != null)
       setSymbols(validSymbols)

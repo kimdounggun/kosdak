@@ -10,6 +10,10 @@ import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, X
 import AiReportViewer from '@/components/Dashboard/AiReportViewer'
 import { Sparkles, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react'
 
+// 프로덕션 환경 체크
+const isDev = process.env.NODE_ENV === 'development'
+const devLog = (...args: any[]) => isDev && console.log(...args)
+
 // 스파크라인 컴포넌트 - 단순하고 깔끔한 버전
 const Sparkline = ({ data, color = '#00E5A8', width = 80, height = 24 }: { data: number[], color?: string, width?: number, height?: number }) => {
   if (!data || data.length === 0) return null
@@ -118,7 +122,7 @@ export default function SymbolDetailPage() {
         const aiRes = await api.get(`/ai/report/latest?symbolId=${params.id}&timeframe=5m`)
         setAiReport(aiRes.data)
       } catch (err) {
-        console.log('No AI report yet - 사용자가 생성해야 함')
+        // AI 리포트 없음 - 정상 (사용자가 생성해야 함)
       }
     } catch (error: any) {
       console.error('Failed to load data:', error)
@@ -152,7 +156,7 @@ export default function SymbolDetailPage() {
     const cached = cachedReports.get(cacheKey)
     
     if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
-      console.log('✅ 캐시된 AI 리포트 사용:', cacheKey)
+      devLog('✅ 캐시된 AI 리포트 사용:', cacheKey)
       setAiReport(cached.data)
       toast.success('캐시된 분석 불러오기 완료!', { id: 'ai', duration: 2000 })
       return
@@ -178,7 +182,7 @@ export default function SymbolDetailPage() {
         timestamp: Date.now()
       })
       setCachedReports(newCache)
-      console.log('💾 AI 리포트 캐시 저장:', cacheKey)
+      devLog('💾 AI 리포트 캐시 저장:', cacheKey)
       
       toast.success('AI 분석 완료!', { id: 'ai' })
     } catch (error: any) {
@@ -227,10 +231,10 @@ export default function SymbolDetailPage() {
     ? candles.map((c, idx) => ({ value: c.volume, index: idx })).reverse().slice(0, 30)
     : []
 
-  // 디버깅: 데이터 확인
-  if (candles && candles.length > 0) {
-    console.log('캔들 데이터 개수:', candles.length)
-    console.log('첫 5개 캔들 상세:', candles.slice(0, 5).map(c => ({ 
+  // 디버깅: 데이터 확인 (개발 환경에서만)
+  if (isDev && candles && candles.length > 0) {
+    devLog('캔들 데이터 개수:', candles.length)
+    devLog('첫 5개 캔들 상세:', candles.slice(0, 5).map(c => ({ 
       close: c.close, 
       open: c.open,
       high: c.high,
@@ -239,22 +243,11 @@ export default function SymbolDetailPage() {
       timestamp: c.timestamp,
       isDelayed: c.isDelayed
     })))
-    console.log('⭐⭐⭐ latestCandle:', latestCandle)
-    console.log('⭐⭐⭐ latestCandle?.close:', latestCandle?.close)
-    console.log('⭐⭐⭐ latestCandle?.open:', latestCandle?.open)
-    console.log('⭐⭐⭐ latestCandle?.high:', latestCandle?.high)
-    console.log('⭐⭐⭐ latestCandle?.low:', latestCandle?.low)
-    console.log('trendData:', trendData.slice(0, 5))
-    const uniqueValues = new Set(trendData.map(d => d.value))
-    console.log('고유한 가격 값 개수:', uniqueValues.size, '값들:', Array.from(uniqueValues).slice(0, 10))
-    
-    // 실제 데이터인지 확인 (타임스탬프가 최근인지)
+    devLog('latestCandle:', latestCandle)
     const latestTimestamp = candles[0]?.timestamp
     const now = new Date()
     const timeDiff = latestTimestamp ? (now.getTime() - new Date(latestTimestamp).getTime()) / (1000 * 60) : null
-    console.log('최신 데이터 타임스탬프:', latestTimestamp, timeDiff ? `(${Math.round(timeDiff)}분 전)` : '없음')
-  } else {
-    console.log('캔들 데이터 없음')
+    devLog('최신 데이터 타임스탬프:', latestTimestamp, timeDiff ? `(${Math.round(timeDiff)}분 전)` : '없음')
   }
 
   // ===== 데이터 유효성 검증 함수들 =====
@@ -341,7 +334,6 @@ export default function SymbolDetailPage() {
   // Widget 1: 시장 시세 분석 - 실제 기간별 가격 변화 계산
   const calculateHistoricalChanges = () => {
     if (!candles || candles.length < 2) {
-      console.log('시장 시세 분석: 캔들 데이터 부족', candles?.length || 0)
       return { min15: '0', hour1: '0', hour4: '0', min15Price: 0, hour1Price: 0, hour4Price: 0, current: 0 }
     }
 
@@ -354,17 +346,6 @@ export default function SymbolDetailPage() {
     const min15Price = candles[min15Idx]?.close || current
     const hour1Price = candles[hour1Idx]?.close || current
     const hour4Price = candles[hour4Idx]?.close || current
-
-    console.log('시장 시세 분석 디버그:', {
-      캔들수: candles.length,
-      현재가: current,
-      '15분_인덱스': min15Idx,
-      '15분_가격': min15Price,
-      '1시간_인덱스': hour1Idx,
-      '1시간_가격': hour1Price,
-      '4시간_인덱스': hour4Idx,
-      '4시간_가격': hour4Price,
-    })
 
     return {
       min15: ((current - min15Price) / min15Price * 100).toFixed(1),
@@ -1046,8 +1027,8 @@ export default function SymbolDetailPage() {
       caution: baseThresholds.caution
     }
     
-    // 디버그 로그
-    console.log('📊 동적 임계값 계산:', {
+    // 디버그 로그 (개발 환경에서만)
+    devLog('📊 동적 임계값 계산:', {
       기본임계값: baseThresholds,
       변동성: volatility,
       변동성조정: volatilityAdjustment,
