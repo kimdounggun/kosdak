@@ -1117,7 +1117,26 @@ export default function SymbolDetailPage() {
   const trendColor = marketStrength.direction === '상승' ? '#00E5A8' : marketStrength.direction === '하락' ? '#FF4D4D' : '#CFCFCF'
   const isBullish = marketStrength.direction === '상승'
   const isBearish = marketStrength.direction === '하락'
-  const priceChange = candles.length > 1 ? ((latestCandle.close - candles[1].close) / candles[1].close * 100) : 0
+  
+  // 당일 변화율 계산 (시가 대비)
+  const priceChange = (() => {
+    // 1순위: symbol 데이터의 공식 변화율
+    if (symbol?.priceChangePercent !== undefined) {
+      return symbol.priceChangePercent
+    }
+    
+    // 2순위: 당일 시가 대비 계산
+    if (latestCandle && symbol?.dayOpen) {
+      return ((latestCandle.close - symbol.dayOpen) / symbol.dayOpen * 100)
+    }
+    
+    // 3순위: 최신 캔들의 시가 대비
+    if (latestCandle) {
+      return ((latestCandle.close - latestCandle.open) / latestCandle.open * 100)
+    }
+    
+    return 0
+  })()
 
   // ===== 차트 시각적 신호 계산 =====
 
@@ -1216,6 +1235,19 @@ export default function SymbolDetailPage() {
     devLog('- 골든/데드크로스:', maCrossovers)
     devLog('- AI 신호:', aiSignal)
     devLog('- AI Conclusion:', aiConclusion)
+    devLog('💰 가격 데이터 확인:')
+    devLog('- symbol 데이터:', {
+      currentPrice: symbol?.currentPrice,
+      dayOpen: symbol?.dayOpen,
+      priceChangePercent: symbol?.priceChangePercent,
+      previousClose: symbol?.previousClose
+    })
+    devLog('- latestCandle:', latestCandle ? {
+      open: latestCandle.open,
+      close: latestCandle.close,
+      timestamp: latestCandle.timestamp
+    } : null)
+    devLog('- 계산된 priceChange:', priceChange.toFixed(2) + '%')
   }
 
   return (
@@ -1609,10 +1641,46 @@ export default function SymbolDetailPage() {
               {/* 차트 뷰별 컨텐츠 */}
               {chartView === 'daily' && (
               <>
+              {/* 차트 상단 실시간 데이터 라벨 */}
+              {latestCandle && indicators && (
+                <div className="mb-2 bg-gradient-to-r from-[rgba(0,229,168,0.1)] to-[rgba(0,209,255,0.1)] border border-[rgba(0,229,168,0.3)] rounded-lg p-2.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div>
+                      <span className="text-gray-400">현재가</span>
+                      <p className={`font-bold text-sm ${priceChange >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                        {latestCandle.close.toLocaleString()}원
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">변화</span>
+                      <p className={`font-bold text-sm ${priceChange >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                        {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
+                      </p>
+                    </div>
+                    {indicators.ma5 && (
+                      <div>
+                        <span className="text-gray-400">MA5</span>
+                        <p className="font-bold text-sm text-[#FFB800]">
+                          {indicators.ma5 > 0 ? indicators.ma5.toLocaleString() : '계산중'}
+                        </p>
+                      </div>
+                    )}
+                    {indicators.ma20 && (
+                      <div>
+                        <span className="text-gray-400">MA20</span>
+                        <p className="font-bold text-sm text-[#00D1FF]">
+                          {indicators.ma20 > 0 ? indicators.ma20.toLocaleString() : '계산중'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="h-48 sm:h-64">
                 {trendData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <AreaChart data={trendData} margin={{ top: 10, right: 10, left: typeof window !== 'undefined' && window.innerWidth >= 640 ? 5 : 0, bottom: 0 }}>
                       <defs>
                         <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor={trendColor} stopOpacity={0.3} />
@@ -1622,9 +1690,92 @@ export default function SymbolDetailPage() {
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                       <XAxis dataKey="index" hide />
                       <YAxis 
-                        hide 
+                        hide={typeof window !== 'undefined' && window.innerWidth < 640} 
                         domain={['dataMin - 100', 'dataMax + 100']}
                         allowDataOverflow={false}
+                        orientation="left"
+                        tick={{ fill: '#CFCFCF', fontSize: 11 }}
+                        tickFormatter={(value) => {
+                          if (value >= 1000000) {
+                            return `${(value / 1000000).toFixed(1)}M`
+                          } else if (value >= 1000) {
+                            return `${(value / 1000).toFixed(0)}K`
+                          }
+                          return value.toLocaleString()
+                        }}
+                        width={60}
+                      />
+                      
+                      {/* 커스텀 툴팁 */}
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (!active || !payload || !payload[0]) return null
+                          
+                          const dataIndex = payload[0].payload.index
+                          const candle = candles[dataIndex]
+                          
+                          if (!candle) return null
+                          
+                          const candleChange = candles[dataIndex + 1] 
+                            ? ((candle.close - candles[dataIndex + 1].close) / candles[dataIndex + 1].close * 100)
+                            : 0
+                          
+                          return (
+                            <div className="bg-[#1a1a1a] border-2 border-[#00E5A8] rounded-lg p-3 shadow-2xl">
+                              <p className="text-xs text-gray-400 mb-2">
+                                {new Date(candle.timestamp).toLocaleString('ko-KR', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </p>
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between gap-4">
+                                  <span className="text-xs text-gray-400">시가</span>
+                                  <span className="text-xs font-bold text-white">{candle.open.toLocaleString()}원</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                  <span className="text-xs text-gray-400">고가</span>
+                                  <span className="text-xs font-bold text-[#00E5A8]">{candle.high.toLocaleString()}원</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                  <span className="text-xs text-gray-400">저가</span>
+                                  <span className="text-xs font-bold text-[#FF4D4D]">{candle.low.toLocaleString()}원</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                  <span className="text-xs text-gray-400">종가</span>
+                                  <span className="text-xs font-bold text-white">{candle.close.toLocaleString()}원</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                  <span className="text-xs text-gray-400">변화</span>
+                                  <span className={`text-xs font-bold ${candleChange >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                                    {candleChange >= 0 ? '+' : ''}{candleChange.toFixed(2)}%
+                                  </span>
+                                </div>
+                                <div className="border-t border-gray-700 pt-1.5 mt-1.5">
+                                  <div className="flex justify-between gap-4">
+                                    <span className="text-xs text-gray-400">거래량</span>
+                                    <span className="text-xs font-bold text-[#00D1FF]">{candle.volume.toLocaleString()}주</span>
+                                  </div>
+                                </div>
+                                {candle.ma5 && (
+                                  <div className="flex justify-between gap-4">
+                                    <span className="text-xs text-[#FFB800]">MA5</span>
+                                    <span className="text-xs font-bold text-[#FFB800]">{candle.ma5.toLocaleString()}원</span>
+                                  </div>
+                                )}
+                                {candle.ma20 && (
+                                  <div className="flex justify-between gap-4">
+                                    <span className="text-xs text-[#00D1FF]">MA20</span>
+                                    <span className="text-xs font-bold text-[#00D1FF]">{candle.ma20.toLocaleString()}원</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        }}
+                        cursor={{ stroke: '#00E5A8', strokeWidth: 1, strokeDasharray: '5 5' }}
                       />
                       
                       {/* 상한가/하한가 선 */}
