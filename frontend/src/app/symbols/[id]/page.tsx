@@ -10,6 +10,7 @@ import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, X
 import AiReportViewer from '@/components/Dashboard/AiReportViewer'
 import AiTrustPanel from '@/components/Dashboard/AiTrustPanel'
 import AiHistoryPanel from '@/components/Dashboard/AiHistoryPanel'
+import LoadingSpinner from '@/components/common/LoadingSpinner'
 import { Sparkles, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react'
 
 // 프로덕션 환경 체크
@@ -214,14 +215,18 @@ export default function SymbolDetailPage() {
 
   if (!isHydrated || !isAuthenticated) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-400">Loading...</p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-dark-100">
+        <LoadingSpinner message="인증 확인 중..." size="md" />
       </div>
     )
   }
-  if (loading) return <DashboardLayout><div className="p-8 text-gray-400">Loading...</div></DashboardLayout>
+  if (loading) return (
+    <DashboardLayout>
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <LoadingSpinner message="종목 데이터 로딩 중..." size="lg" showSteps />
+      </div>
+    </DashboardLayout>
+  )
 
   // Yahoo Finance API가 최신 캔들(진행 중)의 OHLC를 null로 반환하므로
   // 완성된 마지막 캔들(index 1)을 사용

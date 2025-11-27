@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useIsAuthenticated } from '@/stores/authStore'
 import { api } from '@/lib/api'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
+import LoadingSpinner from '@/components/common/LoadingSpinner'
 import { Bell, BellOff, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -58,10 +59,8 @@ export default function AlertsPage() {
 
   if (!isHydrated || !isAuthenticated) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-400">Loading...</p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-dark-100">
+        <LoadingSpinner message="알림 로딩 중..." size="md" />
       </div>
     )
   }

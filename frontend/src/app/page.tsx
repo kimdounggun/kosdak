@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useIsAuthenticated } from '@/stores/authStore'
+import LoadingSpinner from '@/components/common/LoadingSpinner'
 
 export default function Home() {
   const router = useRouter()
@@ -19,10 +20,13 @@ export default function Home() {
   }, [isAuthenticated, isHydrated, router])
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center bg-dark-100">
       <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Kosdak Bot</h1>
-        <p className="text-gray-400">Loading...</p>
+        <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-[#00E5A8] to-[#00D1FF] bg-clip-text text-transparent">
+          KOSDAK
+        </h1>
+        <p className="text-xs text-gray-500 mb-6">AI 주식 분석 플랫폼</p>
+        <LoadingSpinner message="초기화 중..." size="md" />
       </div>
     </div>
   )

@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useIsAuthenticated } from '@/stores/authStore'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
+import LoadingSpinner from '@/components/common/LoadingSpinner'
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -19,10 +20,8 @@ export default function SettingsPage() {
 
   if (!isHydrated || !isAuthenticated) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-400">Loading...</p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-dark-100">
+        <LoadingSpinner message="설정 로딩 중..." size="md" />
       </div>
     )
   }
