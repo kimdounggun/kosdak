@@ -254,6 +254,39 @@ export default function SymbolDetailPage() {
 
   // ===== 데이터 유효성 검증 함수들 =====
 
+  // 한국 주식 시장 상태 확인
+  const getMarketStatus = () => {
+    const now = new Date()
+    const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+    const hours = koreaTime.getHours()
+    const minutes = koreaTime.getMinutes()
+    const day = koreaTime.getDay() // 0: 일요일, 6: 토요일
+    const currentTime = hours * 60 + minutes // 분 단위로 변환
+    
+    // 주말 체크
+    if (day === 0 || day === 6) {
+      return { isOpen: false, status: '주말', message: '주말에는 거래가 없습니다', icon: '📅' }
+    }
+    
+    // 시간대별 상태
+    const preMarketStart = 8 * 60 + 30  // 08:30
+    const marketOpen = 9 * 60           // 09:00
+    const marketClose = 15 * 60 + 30    // 15:30
+    const afterHoursEnd = 18 * 60       // 18:00
+    
+    if (currentTime < preMarketStart) {
+      return { isOpen: false, status: '장 시작 전', message: '정규장 09:00 시작', icon: '🌅' }
+    } else if (currentTime < marketOpen) {
+      return { isOpen: false, status: '프리마켓', message: '정규장 09:00 시작', icon: '⏳' }
+    } else if (currentTime < marketClose) {
+      return { isOpen: true, status: '장중', message: '실시간 거래 중', icon: '🟢' }
+    } else if (currentTime < afterHoursEnd) {
+      return { isOpen: false, status: '시간외 거래', message: '정규장 마감, 시간외 거래 중', icon: '🌙' }
+    } else {
+      return { isOpen: false, status: '장 마감', message: '내일 09:00에 거래 재개', icon: '🔴' }
+    }
+  }
+
   // 데이터 신선도 체크
   const checkDataFreshness = () => {
     if (!candles || candles.length === 0) return { isFresh: false, age: null, isStale: false, isCritical: false }
@@ -262,11 +295,14 @@ export default function SymbolDetailPage() {
     const now = new Date()
     const ageInMinutes = (now.getTime() - latestTimestamp.getTime()) / (1000 * 60)
     
+    const marketStatus = getMarketStatus()
+    
     return {
       isFresh: ageInMinutes <= 30,     // 30분 이내면 신선
       age: Math.round(ageInMinutes),
-      isStale: ageInMinutes > 60,      // 1시간 넘으면 오래됨
-      isCritical: ageInMinutes > 180   // 3시간 넘으면 심각
+      isStale: ageInMinutes > 60 && marketStatus.isOpen,  // 장중인데 1시간 넘으면 오래됨
+      isCritical: ageInMinutes > 180 && marketStatus.isOpen,  // 장중인데 3시간 넘으면 심각
+      marketStatus
     }
   }
 
@@ -1263,7 +1299,7 @@ export default function SymbolDetailPage() {
               <Sparkles className="w-10 h-10 text-primary-400 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 animate-pulse" />
             </div>
             
-            <h3 className="text-white font-bold text-2xl mb-3">🤖 GPT-4 Turbo 분석 중</h3>
+            <h3 className="text-white font-bold text-2xl mb-3">GPT-4 Turbo 분석 중</h3>
             <p className="text-gray-300 text-center mb-4">
               {symbol?.name || '종목'}의 실시간 데이터를 AI가 분석하고 있습니다
             </p>
@@ -1350,14 +1386,44 @@ export default function SymbolDetailPage() {
           </div>
         )}
 
-        {/* 데이터 신선도 경고 */}
+        {/* 장 상태 표시 */}
+        {dataFreshness.marketStatus && !dataFreshness.marketStatus.isOpen && (
+          <div className="bg-[rgba(100,100,255,0.1)] border border-[rgba(100,100,255,0.3)] rounded-lg p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{dataFreshness.marketStatus.icon}</span>
+                <div>
+                  <p className="text-blue-300 text-sm font-semibold">
+                    {dataFreshness.marketStatus.status}
+                  </p>
+                  <p className="text-blue-400/70 text-xs">
+                    {dataFreshness.marketStatus.message}
+                  </p>
+                </div>
+              </div>
+              {dataFreshness.age !== null && (
+                <div className="text-right">
+                  <p className="text-xs text-gray-400">마지막 데이터</p>
+                  <p className="text-sm text-gray-300 font-mono">
+                    {dataFreshness.age >= 60 
+                      ? `${Math.floor(dataFreshness.age / 60)}시간 ${dataFreshness.age % 60}분 전`
+                      : `${dataFreshness.age}분 전`
+                    }
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 장중 데이터 신선도 경고 */}
         {dataFreshness.isStale && !dataFreshness.isCritical && (
           <div className="bg-yellow-900/20 border border-yellow-500/50 rounded-lg p-3">
             <div className="flex items-center gap-2">
               <span className="text-lg">⚠️</span>
               <p className="text-yellow-300 text-sm">
-                데이터가 <span className="font-bold">{dataFreshness.age}분</span> 전 것입니다. 
-                최신 정보가 아닐 수 있습니다.
+                장중인데 데이터가 <span className="font-bold">{dataFreshness.age}분</span> 전 것입니다. 
+                데이터 수집에 문제가 있을 수 있습니다.
               </p>
             </div>
           </div>
@@ -1368,9 +1434,9 @@ export default function SymbolDetailPage() {
             <div className="flex items-center gap-2">
               <span className="text-lg">🚨</span>
               <p className="text-red-300 text-sm">
-                데이터가 매우 오래되었습니다 
+                장중인데 데이터가 매우 오래되었습니다 
                 (<span className="font-bold">{Math.floor(dataFreshness.age / 60)}시간 {dataFreshness.age % 60}분</span> 전).
-                분석 결과를 신뢰하지 마세요!
+                데이터 수집 오류를 확인하세요!
               </p>
             </div>
           </div>

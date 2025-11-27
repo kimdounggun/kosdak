@@ -1,5 +1,1 @@
 web: npm run start:prod
-worker: npm run worker:candles
-worker: npm run worker:alerts
-worker: npm run worker:ai
-
