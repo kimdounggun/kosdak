@@ -1,17 +1,20 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { History, TrendingUp, TrendingDown, Minus, BarChart3 } from 'lucide-react'
+import { History, TrendingUp, TrendingDown, Minus, BarChart3, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 
 interface AiHistoryPanelProps {
   symbolId: string
 }
 
+const INITIAL_DISPLAY_COUNT = 5 // 처음에 보여줄 개수
+
 export default function AiHistoryPanel({ symbolId }: AiHistoryPanelProps) {
   const [history, setHistory] = useState<any[]>([])
   const [stats, setStats] = useState<any>(null)
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null) // null = 로딩 중
+  const [isExpanded, setIsExpanded] = useState(false) // 펼치기/접기 상태
   const { token } = useAuthStore()
 
   useEffect(() => {
@@ -206,7 +209,7 @@ export default function AiHistoryPanel({ symbolId }: AiHistoryPanelProps) {
         </div>
 
         <div className="divide-y divide-gray-700">
-          {history.length > 0 ? history.map((item, idx) => (
+          {history.length > 0 ? (isExpanded ? history : history.slice(0, INITIAL_DISPLAY_COUNT)).map((item, idx) => (
             <div key={idx} className="p-4 hover:bg-[rgba(255,255,255,0.02)] transition-colors">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
@@ -287,6 +290,26 @@ export default function AiHistoryPanel({ symbolId }: AiHistoryPanelProps) {
                 </>
               )}
             </div>
+          )}
+          
+          {/* 더보기/접기 버튼 */}
+          {history.length > INITIAL_DISPLAY_COUNT && (
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="w-full p-3 flex items-center justify-center gap-2 text-sm text-gray-400 hover:text-white hover:bg-[rgba(255,255,255,0.05)] transition-colors"
+            >
+              {isExpanded ? (
+                <>
+                  <ChevronUp className="w-4 h-4" />
+                  접기
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-4 h-4" />
+                  더보기 ({history.length - INITIAL_DISPLAY_COUNT}개 더)
+                </>
+              )}
+            </button>
           )}
         </div>
 
