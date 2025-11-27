@@ -2446,7 +2446,7 @@ export default function SymbolDetailPage() {
                           <div>
                             <p className="text-sm font-semibold text-gray-300 mb-1">스윙 전략 미제공</p>
                             <p className="text-xs text-gray-500 leading-relaxed">
-                              현재 AI 판단이 <span className="text-orange-400 font-semibold">"{aiConclusion.action}"</span>이므로 
+                              현재 AI 판단이 <span className="text-orange-400 font-semibold">&ldquo;{aiConclusion.action}&rdquo;</span>이므로 
                               적극적인 진입 전략을 제시하지 않습니다.
                               <br />
                               <span className="text-gray-400">매수 신호가 발생하면 상세 스윙 전략이 표시됩니다.</span>
