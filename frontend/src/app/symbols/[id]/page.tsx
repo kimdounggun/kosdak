@@ -6,7 +6,7 @@ import { useIsAuthenticated } from '@/stores/authStore'
 import { api } from '@/lib/api'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
 import toast from 'react-hot-toast'
-import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ReferenceDot } from 'recharts'
 import AiReportViewer from '@/components/Dashboard/AiReportViewer'
 import { Sparkles, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react'
 
@@ -1119,6 +1119,105 @@ export default function SymbolDetailPage() {
   const isBearish = marketStrength.direction === '하락'
   const priceChange = candles.length > 1 ? ((latestCandle.close - candles[1].close) / candles[1].close * 100) : 0
 
+  // ===== 차트 시각적 신호 계산 =====
+
+  // 1. 상한가/하한가 계산
+  const calculatePriceLimits = () => {
+    if (!symbol && !latestCandle) return null
+    
+    const previousClose = symbol?.previousClose || latestCandle?.open || 0
+    if (previousClose === 0) return null
+    
+    // KOSDAQ: ±30%, KOSPI: ±15%
+    const isKosdaq = symbol?.market === 'KOSDAQ'
+    const limitPercent = isKosdaq ? 0.30 : 0.15
+    
+    return {
+      upper: previousClose * (1 + limitPercent),
+      lower: previousClose * (1 - limitPercent),
+      previousClose,
+      market: isKosdaq ? 'KOSDAQ' : 'KOSPI'
+    }
+  }
+
+  // 2. 골든크로스/데드크로스 감지
+  const detectMACrossover = () => {
+    if (!candles || candles.length < 2) return []
+    
+    const signals: Array<{type: 'golden' | 'dead', timestamp: string, price: number, index: number}> = []
+    
+    // 최근 20개 캔들만 체크 (너무 많으면 차트가 복잡)
+    const recentCandles = candles.slice(0, Math.min(20, candles.length))
+    
+    for (let i = 1; i < recentCandles.length; i++) {
+      const current = recentCandles[i - 1]  // 최신
+      const previous = recentCandles[i]      // 이전
+      
+      if (!current.ma5 || !current.ma20 || !previous.ma5 || !previous.ma20) continue
+      
+      // 골든크로스: MA5가 MA20을 하향→상향 돌파
+      if (previous.ma5 <= previous.ma20 && current.ma5 > current.ma20) {
+        signals.push({
+          type: 'golden',
+          timestamp: current.timestamp,
+          price: current.close,
+          index: i - 1
+        })
+      }
+      
+      // 데드크로스: MA5가 MA20을 상향→하향 돌파
+      if (previous.ma5 >= previous.ma20 && current.ma5 < current.ma20) {
+        signals.push({
+          type: 'dead',
+          timestamp: current.timestamp,
+          price: current.close,
+          index: i - 1
+        })
+      }
+    }
+    
+    return signals
+  }
+
+  // 3. AI 매수/매도 신호 추출
+  const getAISignal = () => {
+    if (!aiConclusion || !latestCandle) return null
+    
+    const action = aiConclusion.action
+    const currentPrice = latestCandle.close
+    
+    if (action === '강력 매수' || action === '매수') {
+      return {
+        type: 'buy' as const,
+        strength: action === '강력 매수' ? 'strong' : 'normal',
+        price: currentPrice,
+        timestamp: new Date().toISOString()
+      }
+    } else if (action === '매도' || action === '주의') {
+      return {
+        type: 'sell' as const,
+        strength: action === '매도' ? 'strong' : 'caution',
+        price: currentPrice,
+        timestamp: new Date().toISOString()
+      }
+    }
+    
+    return null
+  }
+
+  const priceLimits = calculatePriceLimits()
+  const maCrossovers = detectMACrossover()
+  const aiSignal = getAISignal()
+
+  // 디버그 정보 (개발 모드에서만)
+  if (isDev) {
+    devLog('📊 차트 시각적 신호 디버그:')
+    devLog('- 상한가/하한가:', priceLimits)
+    devLog('- 골든/데드크로스:', maCrossovers)
+    devLog('- AI 신호:', aiSignal)
+    devLog('- AI Conclusion:', aiConclusion)
+  }
+
   return (
     <DashboardLayout>
       {/* AI 분석 생성 중 오버레이 */}
@@ -1527,6 +1626,78 @@ export default function SymbolDetailPage() {
                         domain={['dataMin - 100', 'dataMax + 100']}
                         allowDataOverflow={false}
                       />
+                      
+                      {/* 상한가/하한가 선 */}
+                      {priceLimits && (
+                        <>
+                          <ReferenceLine 
+                            y={priceLimits.upper} 
+                            stroke="#FF4D4D" 
+                            strokeDasharray="5 5"
+                            strokeWidth={2}
+                            label={{ 
+                              value: '상한가', 
+                              position: 'right', 
+                              fill: '#FF4D4D',
+                              fontSize: 10,
+                              fontWeight: 'bold'
+                            }}
+                          />
+                          <ReferenceLine 
+                            y={priceLimits.lower} 
+                            stroke="#0099FF" 
+                            strokeDasharray="5 5"
+                            strokeWidth={2}
+                            label={{ 
+                              value: '하한가', 
+                              position: 'right', 
+                              fill: '#0099FF',
+                              fontSize: 10,
+                              fontWeight: 'bold'
+                            }}
+                          />
+                        </>
+                      )}
+
+                      {/* 골든크로스/데드크로스 표시 */}
+                      {maCrossovers.map((signal, idx) => (
+                        <ReferenceDot
+                          key={`cross-${idx}`}
+                          x={signal.index}
+                          y={signal.price}
+                          r={6}
+                          fill={signal.type === 'golden' ? '#FFD700' : '#8B0000'}
+                          stroke={signal.type === 'golden' ? '#FFA500' : '#FF4D4D'}
+                          strokeWidth={2}
+                          label={{
+                            value: signal.type === 'golden' ? '⚡' : '⚠',
+                            position: 'top',
+                            fontSize: 12
+                          }}
+                        />
+                      ))}
+
+                      {/* AI 매수/매도 신호 (현재가 위치) */}
+                      {aiSignal && latestCandle && (
+                        <ReferenceDot
+                          x={0}  // 최신 데이터는 index 0
+                          y={aiSignal.price}
+                          r={8}
+                          fill={aiSignal.type === 'buy' ? '#00E5A8' : '#FF4D4D'}
+                          stroke={aiSignal.type === 'buy' ? '#00FFC8' : '#FF0000'}
+                          strokeWidth={3}
+                          label={{
+                            value: aiSignal.type === 'buy' 
+                              ? (aiSignal.strength === 'strong' ? '🚀 AI 강력매수' : '📈 AI 매수') 
+                              : (aiSignal.strength === 'strong' ? '📉 AI 매도' : '⚠️ AI 주의'),
+                            position: 'top',
+                            fill: aiSignal.type === 'buy' ? '#00E5A8' : '#FF4D4D',
+                            fontSize: 11,
+                            fontWeight: 'bold'
+                          }}
+                        />
+                      )}
+
                       <Area 
                         type="monotone" 
                         dataKey="value" 
@@ -1543,6 +1714,62 @@ export default function SymbolDetailPage() {
                   <div className="flex items-center justify-center h-full text-[#CFCFCF]">
                     데이터가 없습니다
                   </div>
+                )}
+              </div>
+              
+              {/* 신호 범례 - 항상 표시 */}
+              <div className="mt-3 bg-[rgba(255,255,255,0.03)] rounded-lg p-3 border border-[rgba(255,255,255,0.08)]">
+                <h4 className="text-xs font-semibold text-white mb-2.5">차트 신호 범례</h4>
+                <div className="flex flex-wrap gap-3 text-xs">
+                  {/* 상한가/하한가 */}
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-[#FF4D4D]" style={{backgroundImage: 'repeating-linear-gradient(to right, #FF4D4D 0px, #FF4D4D 5px, transparent 5px, transparent 10px)'}}></div>
+                    <span className="text-[#CFCFCF]">
+                      상한가 {priceLimits ? `(${priceLimits.upper.toLocaleString()}원)` : '(계산 중)'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-[#0099FF]" style={{backgroundImage: 'repeating-linear-gradient(to right, #0099FF 0px, #0099FF 5px, transparent 5px, transparent 10px)'}}></div>
+                    <span className="text-[#CFCFCF]">
+                      하한가 {priceLimits ? `(${priceLimits.lower.toLocaleString()}원)` : '(계산 중)'}
+                    </span>
+                  </div>
+                  
+                  {/* 골든크로스/데드크로스 */}
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full bg-[#FFD700] border-2 border-[#FFA500]"></div>
+                    <span className="text-[#CFCFCF]">
+                      골든크로스 {maCrossovers.length > 0 ? `(${maCrossovers.filter(s => s.type === 'golden').length}개)` : '(감지안됨)'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full bg-[#8B0000] border-2 border-[#FF4D4D]"></div>
+                    <span className="text-[#CFCFCF]">
+                      데드크로스 {maCrossovers.length > 0 ? `(${maCrossovers.filter(s => s.type === 'dead').length}개)` : '(감지안됨)'}
+                    </span>
+                  </div>
+                  
+                  {/* AI 신호 */}
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-3 h-3 rounded-full ${aiSignal?.type === 'buy' ? 'bg-[#00E5A8] border-2 border-[#00FFC8]' : aiSignal?.type === 'sell' ? 'bg-[#FF4D4D] border-2 border-[#FF0000]' : 'bg-gray-600 border-2 border-gray-500'}`}></div>
+                    <span className="text-[#CFCFCF]">
+                      AI 신호: {aiSignal ? (
+                        aiSignal.type === 'buy' 
+                          ? (aiSignal.strength === 'strong' ? '강력매수' : '매수')
+                          : (aiSignal.strength === 'strong' ? '매도' : '주의')
+                      ) : '관망'}
+                    </span>
+                  </div>
+                </div>
+                
+                {/* 추가 설명 */}
+                {(!priceLimits || maCrossovers.length === 0 || !aiSignal) && (
+                  <p className="text-[10px] text-gray-500 mt-2 leading-relaxed">
+                     일부 신호가 감지되지 않았습니다. 
+                    {!priceLimits && ' 전일 종가 데이터가 필요합니다.'}
+                    {maCrossovers.length === 0 && ' 최근 MA 크로스오버가 없습니다.'}
+                    {!aiSignal && ' AI가 명확한 매수/매도 신호를 감지하지 못했습니다.'}
+                  </p>
                 )}
               </div>
               </>
