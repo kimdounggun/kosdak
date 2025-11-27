@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, UseGuards, Request, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { AiService } from './ai.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -40,6 +40,25 @@ export class AiController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async getUserReports(@Request() req, @Query('limit') limit: number = 20) {
     return this.aiService.getUserReports(req.user._id.toString(), limit);
+  }
+
+  @Get('reports/history/:symbolId')
+  @ApiOperation({ summary: 'Get AI analysis history for a symbol' })
+  async getSymbolHistory(
+    @Request() req,
+    @Param('symbolId') symbolId: string,
+    @Query('limit') limit: number = 10,
+  ) {
+    return this.aiService.getSymbolHistory(symbolId, req.user._id.toString(), limit);
+  }
+
+  @Get('reports/stats/:symbolId')
+  @ApiOperation({ summary: 'Get backtesting stats for a symbol' })
+  async getBacktestingStats(
+    @Request() req,
+    @Param('symbolId') symbolId: string,
+  ) {
+    return this.aiService.getBacktestingStats(symbolId, req.user._id.toString());
   }
 }
 

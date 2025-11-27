@@ -63,11 +63,46 @@ export class AiService {
       metadata.volumeAtGeneration = latestCandle.volume;
     }
 
+    // 분석 과정 추적
+    const analysisProcess: any = {};
+    const explainability: any = {};
+    let rawResponse = '';
+    const startTime = Date.now();
+
     // Generate AI report
     if (this.openai) {
       try {
+        // Step 1: 기술적 지표 분석
+        analysisProcess.step1 = {
+          status: 'completed',
+          result: '기술적 지표 분석 완료',
+          details: {
+            rsi: latestIndicator?.rsi || 0,
+            macd: latestIndicator?.macd || 0,
+            ma5: latestIndicator?.ma5 || 0,
+            ma20: latestIndicator?.ma20 || 0,
+            ma60: latestIndicator?.ma60 || 0,
+          }
+        };
+
+        // Step 2: 패턴 인식
+        const recentTrend = this.analyzeTrend(candles);
+        analysisProcess.step2 = {
+          status: 'completed',
+          result: '패턴 인식 완료',
+          details: recentTrend
+        };
+
+        // Step 3: 리스크 평가
+        const riskAssessment = this.assessRisk(candles, latestIndicator);
+        analysisProcess.step3 = {
+          status: 'completed',
+          result: '리스크 평가 완료',
+          details: riskAssessment
+        };
+
         const completion = await this.openai.chat.completions.create({
-          model: 'gpt-4',
+          model: 'gpt-4-turbo-preview',
           messages: [
             {
               role: 'system',
@@ -83,6 +118,18 @@ export class AiService {
         });
 
         content = completion.choices[0].message.content || '';
+        rawResponse = content;
+        
+        // 메타데이터 업데이트
+        metadata.model = 'gpt-4-turbo-preview';
+        metadata.modelVersion = 'gpt-4-turbo-2024-04-09';
+        metadata.tokensUsed = completion.usage?.total_tokens || 0;
+        metadata.processingTimeMs = Date.now() - startTime;
+
+        // 가중치 계산
+        explainability.factors = this.calculateFactorWeights(latestIndicator, candles);
+        explainability.reasoning = this.generateReasoning(latestIndicator, candles);
+        explainability.alternatives = this.generateAlternatives(latestIndicator);
         
         // AI 응답 검증
         const validation = this.validateAIResponse(content);
@@ -99,9 +146,18 @@ export class AiService {
       } catch (error) {
         console.error('OpenAI API error:', error);
         content = this.generateFallbackReport(symbol, latestCandle, latestIndicator);
+        analysisProcess.step1 = { status: 'error', result: 'API 오류', details: error.message };
       }
     } else {
       content = this.generateFallbackReport(symbol, latestCandle, latestIndicator);
+      analysisProcess.step1 = { status: 'skipped', result: 'OpenAI API 키 없음', details: {} };
+    }
+
+    // AI 예측 액션 추출 (백테스팅용)
+    let predictedAction = '관망';
+    const actionMatch = content.match(/권장 포지션:\s*\[?([^\]]+)\]?/);
+    if (actionMatch) {
+      predictedAction = actionMatch[1].trim();
     }
 
     // Save report
@@ -112,6 +168,11 @@ export class AiService {
       reportType,
       content,
       metadata,
+      analysisProcess,
+      explainability,
+      rawResponse,
+      predictedAction,
+      investmentPeriod,
       validUntil: new Date(Date.now() + 6 * 60 * 60 * 1000), // Valid for 6 hours
     });
 
@@ -369,6 +430,195 @@ export class AiService {
     return report;
   }
 
+  private analyzeTrend(candles: any[]): any {
+    if (candles.length < 10) return { trend: 'unknown', strength: 0 };
+    
+    const recent10 = candles.slice(0, 10);
+    const upCandles = recent10.filter(c => c.close > c.open).length;
+    const downCandles = recent10.filter(c => c.close < c.open).length;
+    
+    return {
+      trend: upCandles > downCandles ? 'uptrend' : downCandles > upCandles ? 'downtrend' : 'sideways',
+      upCandlesCount: upCandles,
+      downCandlesCount: downCandles,
+      strength: Math.abs(upCandles - downCandles) / 10 * 100,
+      support: Math.min(...recent10.map(c => c.low)),
+      resistance: Math.max(...recent10.map(c => c.high)),
+    };
+  }
+
+  private assessRisk(candles: any[], indicator: any): any {
+    if (!indicator || candles.length < 10) {
+      return { volatility: 'unknown', risk: 'medium' };
+    }
+
+    const recent10 = candles.slice(0, 10);
+    const prices = recent10.map(c => c.close);
+    const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+    const variance = prices.reduce((sum, price) => sum + Math.pow(price - avgPrice, 2), 0) / prices.length;
+    const stdDev = Math.sqrt(variance);
+    const volatility = (stdDev / avgPrice) * 100;
+
+    const avgVolume = recent10.reduce((sum, c) => sum + c.volume, 0) / recent10.length;
+    const volumeRatio = candles[0].volume / avgVolume;
+
+    return {
+      volatility: volatility > 5 ? '높음' : volatility > 2 ? '중간' : '낮음',
+      volatilityPercent: volatility.toFixed(2),
+      risk: volatility > 5 ? '높음' : volatility > 2 ? '중간' : '낮음',
+      avgVolume: Math.round(avgVolume),
+      currentVolume: candles[0].volume,
+      volumeRatio: volumeRatio.toFixed(2),
+    };
+  }
+
+  private calculateFactorWeights(indicator: any, candles: any[]): any[] {
+    if (!indicator) return [];
+
+    const factors: any[] = [];
+    let totalWeight = 0;
+
+    // RSI 가중치
+    if (indicator.rsi) {
+      let weight = 0;
+      let impact = '';
+      
+      if (indicator.rsi > 70) {
+        weight = 25;
+        impact = '과매수 구간 (매도 압력 예상)';
+      } else if (indicator.rsi < 30) {
+        weight = 30;
+        impact = '과매도 구간 (반등 가능성)';
+      } else if (indicator.rsi > 55) {
+        weight = 20;
+        impact = '상승 모멘텀 지속';
+      } else {
+        weight = 10;
+        impact = '중립 구간';
+      }
+
+      factors.push({ name: 'RSI 신호', weight, impact });
+      totalWeight += weight;
+    }
+
+    // MACD 가중치
+    if (indicator.macd !== undefined && indicator.macdSignal !== undefined) {
+      let weight = 0;
+      let impact = '';
+
+      if (indicator.macd > indicator.macdSignal) {
+        weight = 25;
+        impact = 'Signal 상향돌파 (매수 신호)';
+      } else {
+        weight = 15;
+        impact = 'Signal 하향돌파 (매도 신호)';
+      }
+
+      factors.push({ name: 'MACD 크로스오버', weight, impact });
+      totalWeight += weight;
+    }
+
+    // 이동평균선 가중치
+    if (indicator.ma5 && indicator.ma20 && indicator.ma60) {
+      let weight = 0;
+      let impact = '';
+
+      if (indicator.ma5 > indicator.ma20 && indicator.ma20 > indicator.ma60) {
+        weight = 25;
+        impact = '정배열 (강한 상승 추세)';
+      } else if (indicator.ma5 < indicator.ma20 && indicator.ma20 < indicator.ma60) {
+        weight = 20;
+        impact = '역배열 (강한 하락 추세)';
+      } else {
+        weight = 10;
+        impact = '혼조 (방향성 불명확)';
+      }
+
+      factors.push({ name: '이동평균선 배열', weight, impact });
+      totalWeight += weight;
+    }
+
+    // 거래량 가중치
+    if (candles && candles.length >= 10) {
+      const avgVolume = candles.slice(0, 10).reduce((sum, c) => sum + c.volume, 0) / 10;
+      const volumeRatio = candles[0].volume / avgVolume;
+
+      let weight = 0;
+      let impact = '';
+
+      if (volumeRatio > 1.5) {
+        weight = 20;
+        impact = `거래량 급증 (평균 대비 ${(volumeRatio * 100).toFixed(0)}%)`;
+      } else if (volumeRatio > 1.0) {
+        weight = 15;
+        impact = `거래량 증가 (평균 대비 ${(volumeRatio * 100).toFixed(0)}%)`;
+      } else {
+        weight = 5;
+        impact = '거래량 평범';
+      }
+
+      factors.push({ name: '거래량 분석', weight, impact });
+      totalWeight += weight;
+    }
+
+    // 가중치 정규화 (총 100%로)
+    factors.forEach(f => {
+      f.weight = Math.round((f.weight / totalWeight) * 100);
+    });
+
+    return factors.sort((a, b) => b.weight - a.weight);
+  }
+
+  private generateReasoning(indicator: any, candles: any[]): string {
+    if (!indicator) return '데이터 부족으로 분석 불가';
+
+    const reasons: string[] = [];
+
+    if (indicator.rsi) {
+      if (indicator.rsi > 70) reasons.push('RSI 과매수 구간 진입으로 단기 조정 가능성');
+      else if (indicator.rsi < 30) reasons.push('RSI 과매도 구간으로 반등 기회 포착');
+      else if (indicator.rsi > 55) reasons.push('RSI 상승 모멘텀 유지');
+    }
+
+    if (indicator.macd !== undefined && indicator.macdSignal !== undefined) {
+      if (indicator.macd > indicator.macdSignal) {
+        reasons.push('MACD가 Signal선을 상향돌파하며 매수 신호 발생');
+      }
+    }
+
+    if (indicator.ma5 && indicator.ma20) {
+      if (indicator.ma5 > indicator.ma20) {
+        reasons.push('단기 이동평균이 중기 이동평균을 상회하며 상승 추세 지속');
+      } else {
+        reasons.push('단기 이동평균이 중기 이동평균 하회로 하락 압력 존재');
+      }
+    }
+
+    return reasons.join('. ') || '추가 분석 필요';
+  }
+
+  private generateAlternatives(indicator: any): string {
+    if (!indicator) return '';
+
+    const alternatives: string[] = [];
+
+    if (indicator.rsi) {
+      if (indicator.rsi > 65) {
+        alternatives.push('만약 RSI가 70 이상으로 상승 시 단기 매도 검토 권장');
+      } else if (indicator.rsi < 35) {
+        alternatives.push('만약 RSI가 30 이하로 하락 시 추가 매수 기회 포착 가능');
+      }
+    }
+
+    if (indicator.macd !== undefined && indicator.macdSignal !== undefined) {
+      if (indicator.macd > indicator.macdSignal) {
+        alternatives.push('MACD가 음수 전환 시 추세 전환 신호로 포지션 청산 고려');
+      }
+    }
+
+    return alternatives.join('. ') || '현 시점 유지 전략 권장';
+  }
+
   async getLatestReport(symbolId: string, timeframe: string = '5m', userId?: string) {
     const query: any = {
       symbolId: new Types.ObjectId(symbolId),
@@ -389,6 +639,97 @@ export class AiService {
       .populate('symbolId')
       .sort({ createdAt: -1 })
       .limit(limit);
+  }
+
+  async getSymbolHistory(symbolId: string, userId: string, limit: number = 10) {
+    const reports = await this.aiReportModel
+      .find({ 
+        symbolId: new Types.ObjectId(symbolId),
+        userId: new Types.ObjectId(userId)
+      })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    return reports.map((report: any) => ({
+      date: report.createdAt || new Date(),
+      action: report.predictedAction || '관망',
+      price: report.metadata?.priceAtGeneration || 0,
+      actualChange: report.actualOutcome?.priceChangePercent || null,
+      correct: report.actualOutcome?.wasCorrect || null,
+      confidence: report.metadata?.confidence ? Math.round(report.metadata.confidence * 100) : null,
+      reportId: report._id,
+    }));
+  }
+
+  async getBacktestingStats(symbolId: string, userId: string) {
+    const reports = await this.aiReportModel
+      .find({ 
+        symbolId: new Types.ObjectId(symbolId),
+        userId: new Types.ObjectId(userId),
+        'actualOutcome.wasCorrect': { $exists: true }
+      })
+      .lean();
+
+    if (reports.length === 0) {
+      return {
+        totalPredictions: 0,
+        accuracy: 0,
+        buyAccuracy: 0,
+        sellAccuracy: 0,
+        avgProfit: 0,
+        actionBreakdown: {
+          strongBuy: { count: 0, accuracy: 0 },
+          buy: { count: 0, accuracy: 0 },
+          hold: { count: 0, accuracy: 0 },
+          caution: { count: 0, accuracy: 0 },
+          sell: { count: 0, accuracy: 0 },
+        }
+      };
+    }
+
+    const totalPredictions = reports.length;
+    const correctPredictions = reports.filter(r => r.actualOutcome?.wasCorrect).length;
+    const accuracy = (correctPredictions / totalPredictions * 100).toFixed(0);
+
+    const buyReports = reports.filter(r => r.predictedAction?.includes('매수'));
+    const buyCorrect = buyReports.filter(r => r.actualOutcome?.wasCorrect).length;
+    const buyAccuracy = buyReports.length > 0 ? (buyCorrect / buyReports.length * 100).toFixed(0) : 0;
+
+    const sellReports = reports.filter(r => r.predictedAction?.includes('매도') || r.predictedAction?.includes('주의'));
+    const sellCorrect = sellReports.filter(r => r.actualOutcome?.wasCorrect).length;
+    const sellAccuracy = sellReports.length > 0 ? (sellCorrect / sellReports.length * 100).toFixed(0) : 0;
+
+    const avgProfit = buyReports
+      .filter(r => r.actualOutcome?.priceChangePercent !== undefined)
+      .reduce((sum, r) => sum + (r.actualOutcome?.priceChangePercent || 0), 0) / Math.max(buyReports.length, 1);
+
+    // Action breakdown
+    const actionBreakdown = {
+      strongBuy: this.calculateActionStats(reports, '강력 매수'),
+      buy: this.calculateActionStats(reports, '매수'),
+      hold: this.calculateActionStats(reports, '관망'),
+      caution: this.calculateActionStats(reports, '주의'),
+      sell: this.calculateActionStats(reports, '매도'),
+    };
+
+    return {
+      totalPredictions,
+      accuracy: parseFloat(accuracy),
+      buyAccuracy: parseFloat(buyAccuracy as string),
+      sellAccuracy: parseFloat(sellAccuracy as string),
+      avgProfit: parseFloat(avgProfit.toFixed(2)),
+      actionBreakdown,
+    };
+  }
+
+  private calculateActionStats(reports: any[], action: string) {
+    const filtered = reports.filter(r => r.predictedAction === action);
+    const correct = filtered.filter(r => r.actualOutcome?.wasCorrect).length;
+    return {
+      count: filtered.length,
+      accuracy: filtered.length > 0 ? parseFloat((correct / filtered.length * 100).toFixed(0)) : 0,
+    };
   }
 }
 

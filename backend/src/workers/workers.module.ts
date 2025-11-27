@@ -8,10 +8,14 @@ import { NotificationsModule } from '../modules/notifications/notifications.modu
 import { CandlesCollectorWorker } from './candles-collector.worker';
 import { AlertCheckerWorker } from './alert-checker.worker';
 import { AiReportWorker } from './ai-report.worker';
+import { OutcomeTrackerWorker } from './outcome-tracker.worker';
 import { WorkersController } from './workers.controller';
+import { MongooseModule } from '@nestjs/mongoose';
+import { AiReport, AiReportSchema } from '../schemas/ai-report.schema';
 
 @Module({
   imports: [
+    MongooseModule.forFeature([{ name: AiReport.name, schema: AiReportSchema }]),
     CandlesModule,
     IndicatorsModule,
     SymbolsModule,
@@ -20,7 +24,7 @@ import { WorkersController } from './workers.controller';
     NotificationsModule,
   ],
   controllers: [WorkersController],
-  providers: [CandlesCollectorWorker, AlertCheckerWorker, AiReportWorker],
+  providers: [CandlesCollectorWorker, AlertCheckerWorker, AiReportWorker, OutcomeTrackerWorker],
 })
 export class WorkersModule { }
 

@@ -8,6 +8,8 @@ import DashboardLayout from '@/components/Layout/DashboardLayout'
 import toast from 'react-hot-toast'
 import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ReferenceDot } from 'recharts'
 import AiReportViewer from '@/components/Dashboard/AiReportViewer'
+import AiTrustPanel from '@/components/Dashboard/AiTrustPanel'
+import AiHistoryPanel from '@/components/Dashboard/AiHistoryPanel'
 import { Sparkles, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react'
 
 // 프로덕션 환경 체크
@@ -1255,20 +1257,50 @@ export default function SymbolDetailPage() {
       {/* AI 분석 생성 중 오버레이 */}
       {generatingReport && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-dark-100 p-8 rounded-xl shadow-2xl flex flex-col items-center max-w-md mx-4">
-            <div className="relative">
-              <div className="animate-spin w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full"></div>
-              <Sparkles className="w-8 h-8 text-primary-400 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+          <div className="bg-gradient-to-br from-dark-100 to-dark-200 p-8 rounded-xl shadow-2xl border border-primary-500/30 flex flex-col items-center max-w-lg mx-4">
+            <div className="relative mb-6">
+              <div className="animate-spin w-20 h-20 border-4 border-primary-500 border-t-transparent rounded-full"></div>
+              <Sparkles className="w-10 h-10 text-primary-400 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 animate-pulse" />
             </div>
-            <h3 className="text-white font-bold text-xl mt-6 mb-2">AI가 분석 중입니다</h3>
-            <p className="text-gray-300 text-center mb-1">
-              {symbol?.name || '종목'}의 기술적 지표를 분석하고 있습니다
+            
+            <h3 className="text-white font-bold text-2xl mb-3">🤖 GPT-4 Turbo 분석 중</h3>
+            <p className="text-gray-300 text-center mb-4">
+              {symbol?.name || '종목'}의 실시간 데이터를 AI가 분석하고 있습니다
             </p>
-            <p className="text-gray-400 text-sm">약 3~5초 소요됩니다</p>
-            <div className="mt-4 flex gap-2">
-              <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-              <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-              <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+
+            {/* 분석 단계 */}
+            <div className="w-full space-y-2.5 mb-5">
+              <div className="flex items-center gap-3 text-sm">
+                <div className="w-5 h-5 rounded-full bg-[#00E5A8] flex items-center justify-center flex-shrink-0">
+                  <svg className="w-3 h-3 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <span className="text-gray-300">기술적 지표 수집 완료</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="w-5 h-5 rounded-full bg-[#00E5A8] flex items-center justify-center flex-shrink-0">
+                  <svg className="w-3 h-3 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <span className="text-gray-300">패턴 분석 중...</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="w-5 h-5 rounded-full border-2 border-gray-600 animate-pulse flex-shrink-0"></div>
+                <span className="text-gray-500">GPT-4 응답 대기 중...</span>
+              </div>
+            </div>
+
+            <div className="text-xs text-gray-400 bg-black/30 rounded-lg px-4 py-2 mb-4">
+              <p className="mb-1">🔹 사용 모델: GPT-4 Turbo (gpt-4-turbo-2024-04-09)</p>
+              <p>🔹 예상 소요 시간: 3~5초</p>
+            </div>
+
+            <div className="flex gap-2">
+              <div className="w-2.5 h-2.5 bg-[#00E5A8] rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+              <div className="w-2.5 h-2.5 bg-[#00D1FF] rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
+              <div className="w-2.5 h-2.5 bg-[#FFB800] rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
             </div>
           </div>
         </div>
@@ -1437,11 +1469,11 @@ export default function SymbolDetailPage() {
                 <span className="text-[#CFCFCF]">신뢰도</span>
                 {confidenceMetrics.confidence !== null ? (
                   <>
-                    <span className="text-white font-semibold">{confidenceMetrics.confidence}%</span>
-                    <span className="text-[#CFCFCF]">
+                <span className="text-white font-semibold">{confidenceMetrics.confidence}%</span>
+                <span className="text-[#CFCFCF]">
                       {confidenceMetrics.confidence >= 80 ? '높음' : 
                        confidenceMetrics.confidence >= 60 ? '보통' : '낮음'}
-                    </span>
+                </span>
                   </>
                 ) : (
                   <span className="text-[#CFCFCF]">데이터 없음</span>
@@ -1601,7 +1633,7 @@ export default function SymbolDetailPage() {
                     <span className="hidden sm:inline">{generatingReport ? '분석 중' : 'AI 분석'}</span>
                     <span className="sm:hidden">AI분석</span>
                   </button>
-                </div>
+                  </div>
                 
                 {/* 차트 뷰 선택 버튼 */}
                 <div className="flex gap-2 overflow-x-auto pb-1">
@@ -1722,14 +1754,21 @@ export default function SymbolDetailPage() {
                           
                           return (
                             <div className="bg-[#1a1a1a] border-2 border-[#00E5A8] rounded-lg p-3 shadow-2xl">
-                              <p className="text-xs text-gray-400 mb-2">
-                                {new Date(candle.timestamp).toLocaleString('ko-KR', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </p>
+                              <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-700">
+                                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <p className="text-xs font-semibold text-white">
+                                  {new Date(candle.timestamp).toLocaleString('ko-KR', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    hour12: true
+                                  })}
+                                </p>
+                              </div>
                               <div className="space-y-1.5">
                                 <div className="flex justify-between gap-4">
                                   <span className="text-xs text-gray-400">시가</span>
@@ -1753,12 +1792,14 @@ export default function SymbolDetailPage() {
                                     {candleChange >= 0 ? '+' : ''}{candleChange.toFixed(2)}%
                                   </span>
                                 </div>
-                                <div className="border-t border-gray-700 pt-1.5 mt-1.5">
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-xs text-gray-400">거래량</span>
-                                    <span className="text-xs font-bold text-[#00D1FF]">{candle.volume.toLocaleString()}주</span>
+                                {candle.volume !== undefined && candle.volume > 0 && (
+                                  <div className="border-t border-gray-700 pt-1.5 mt-1.5">
+                                    <div className="flex justify-between gap-4">
+                                      <span className="text-xs text-gray-400">거래량</span>
+                                      <span className="text-xs font-bold text-[#00D1FF]">{candle.volume.toLocaleString()}주</span>
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                                 {candle.ma5 && (
                                   <div className="flex justify-between gap-4">
                                     <span className="text-xs text-[#FFB800]">MA5</span>
@@ -1884,7 +1925,7 @@ export default function SymbolDetailPage() {
                     <span className="text-[#CFCFCF]">
                       하한가 {priceLimits ? `(${priceLimits.lower.toLocaleString()}원)` : '(계산 중)'}
                     </span>
-                  </div>
+            </div>
                   
                   {/* 골든크로스/데드크로스 */}
                   <div className="flex items-center gap-1.5">
@@ -2130,18 +2171,18 @@ export default function SymbolDetailPage() {
                   <div className="grid grid-cols-3 gap-3 mb-5">
                     <div className="text-center bg-[rgba(0,229,168,0.1)] border border-[rgba(0,229,168,0.3)] rounded-lg p-4 relative overflow-hidden">
                       {confidenceMetrics.confidence !== null && (
-                        <div 
-                          className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[rgba(0,229,168,0.2)] to-transparent"
-                          style={{ height: `${confidenceMetrics.confidence}%` }}
-                        ></div>
+                      <div 
+                        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[rgba(0,229,168,0.2)] to-transparent"
+                        style={{ height: `${confidenceMetrics.confidence}%` }}
+                      ></div>
                       )}
                       <p className="text-xs text-[#CFCFCF] mb-2 relative z-10">신뢰도</p>
                       {confidenceMetrics.confidence !== null ? (
                         <>
-                          <p className="text-2xl font-bold text-[#00E5A8] relative z-10">{confidenceMetrics.confidence}%</p>
-                          <p className="text-xs text-[#00E5A8] mt-1 relative z-10">
-                            {confidenceMetrics.confidence >= 70 ? '높음' : confidenceMetrics.confidence >= 50 ? '보통' : '낮음'}
-                          </p>
+                      <p className="text-2xl font-bold text-[#00E5A8] relative z-10">{confidenceMetrics.confidence}%</p>
+                      <p className="text-xs text-[#00E5A8] mt-1 relative z-10">
+                        {confidenceMetrics.confidence >= 70 ? '높음' : confidenceMetrics.confidence >= 50 ? '보통' : '낮음'}
+                      </p>
                         </>
                       ) : (
                         <p className="text-sm text-[#CFCFCF] relative z-10">데이터 없음</p>
@@ -2193,7 +2234,7 @@ export default function SymbolDetailPage() {
                     if (!strategy) return null
                     
                     return (
-                      <div className="mt-5 pt-5 border-t border-[rgba(255,255,255,0.1)]">
+                  <div className="mt-5 pt-5 border-t border-[rgba(255,255,255,0.1)]">
                         <div className="flex items-center gap-2 mb-4">
                           <svg className="w-5 h-5 text-[#00E5A8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -2219,11 +2260,11 @@ export default function SymbolDetailPage() {
                                     style={{ backgroundColor: color.circle }}
                                   >
                                     {stepIndex + 1}
-                                  </div>
+                            </div>
                                   <p className="text-sm font-bold text-white">
                                     {step.day}: {step.title}
                                   </p>
-                                </div>
+                          </div>
                                 
                                 {/* 시나리오별 대응 */}
                                 <div className="ml-9 space-y-2">
@@ -2290,7 +2331,7 @@ export default function SymbolDetailPage() {
                                           border: `1px solid ${scenarioStyle.border}`
                                         }}
                                       >
-                                        <div className="flex items-start gap-3">
+                          <div className="flex items-start gap-3">
                                           <div 
                                             className="flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center"
                                             style={{ backgroundColor: 'rgba(0,0,0,0.3)' }}
@@ -2303,8 +2344,8 @@ export default function SymbolDetailPage() {
                                             >
                                               {scenarioStyle.svg}
                                             </svg>
-                                          </div>
-                                          <div className="flex-1">
+                            </div>
+                            <div className="flex-1">
                                             <p className="text-xs font-semibold text-[#CFCFCF] mb-1">
                                               {scenario.condition}
                                             </p>
@@ -2314,17 +2355,17 @@ export default function SymbolDetailPage() {
                                             <p className="text-xs text-[#CFCFCF]/80">
                                               {scenario.reason}
                                             </p>
-                                          </div>
-                                        </div>
-                                      </div>
+                            </div>
+                          </div>
+                        </div>
                                     )
                                   })}
-                                </div>
-                              </div>
+                      </div>
+                            </div>
                             )
                           })}
+                          </div>
                         </div>
-                      </div>
                     )
                   })()}
 
@@ -2357,6 +2398,12 @@ export default function SymbolDetailPage() {
                   
                   <AiReportViewer report={aiReport.content || ''} />
                 </div>
+
+                {/* AI 신뢰도 패널 */}
+                <AiTrustPanel aiReport={aiReport} generatingReport={generatingReport} />
+
+                {/* AI 히스토리 & 백테스팅 */}
+                <AiHistoryPanel symbolId={Array.isArray(params.id) ? params.id[0] : params.id} />
               </>
             )}
             {/* @ts-ignore */}
@@ -2505,8 +2552,8 @@ export default function SymbolDetailPage() {
                       {signalRegime.bullishCount}
                     </span>
                     <span className="text-sm text-[#CFCFCF]">개</span>
+              </div>
                   </div>
-                </div>
                 <div className="text-xs sm:text-sm font-bold text-right" style={{
                   color: signalRegime.bullishCount >= signalRegime.totalCount * 0.8
                     ? '#00E5A8'
@@ -2521,7 +2568,7 @@ export default function SymbolDetailPage() {
                    signalRegime.bullishCount >= signalRegime.totalCount * 0.4 ? '중립 신호' :
                    '매도 신호 우세'}
                 </div>
-              </div>
+                  </div>
 
               {/* 지표별 상세 */}
               <div className="space-y-2">
@@ -2534,7 +2581,7 @@ export default function SymbolDetailPage() {
                       <span className={`font-bold text-xs sm:text-sm min-w-[32px] text-right ${signal.isBullish ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
                         {signal.isBullish ? '매수' : '매도'}
                       </span>
-                    </div>
+                </div>
                   </div>
                 ))}
               </div>
@@ -2585,30 +2632,30 @@ export default function SymbolDetailPage() {
 
               {/* Data Table - 2열 구조 (평균 제거) */}
               {confidenceMetrics.confidence !== null ? (
-                <div className="space-y-2 text-base">
+              <div className="space-y-2 text-base">
                   <div className="grid grid-cols-2 gap-3 pb-2 border-b border-[rgba(255,255,255,0.05)]">
-                    <span className="text-[#CFCFCF] font-semibold text-left">지표</span>
+                  <span className="text-[#CFCFCF] font-semibold text-left">지표</span>
                     <span className="text-[#CFCFCF] font-semibold text-right">수치</span>
-                  </div>
+                </div>
                   <div className="grid grid-cols-2 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
-                    <span className="text-[#CFCFCF] font-light text-left">신뢰도</span>
+                  <span className="text-[#CFCFCF] font-light text-left">신뢰도</span>
                     <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">
                       {confidenceMetrics.confidence !== null ? `${confidenceMetrics.confidence}%` : '데이터 없음'}
                     </span>
-                  </div>
+                </div>
                   <div className="grid grid-cols-2 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
-                    <span className="text-[#CFCFCF] font-light text-left">정확도</span>
+                  <span className="text-[#CFCFCF] font-light text-left">정확도</span>
                     <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">
                       {confidenceMetrics.accuracy !== null ? `${confidenceMetrics.accuracy}%` : '데이터 없음'}
                     </span>
-                  </div>
+                </div>
                   <div className="grid grid-cols-2 gap-3 py-1">
-                    <span className="text-[#CFCFCF] font-light text-left">일관성</span>
+                  <span className="text-[#CFCFCF] font-light text-left">일관성</span>
                     <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">
                       {confidenceMetrics.consistency !== null ? `${confidenceMetrics.consistency}%` : '데이터 없음'}
                     </span>
-                  </div>
                 </div>
+              </div>
               ) : (
                 <div className="flex items-center justify-center h-[100px] text-[#CFCFCF]">
                   <p className="text-sm">데이터 없음</p>
@@ -2676,7 +2723,7 @@ export default function SymbolDetailPage() {
             </div>
 
 
-          </div>
+                  </div>
           )}
         </div>
 

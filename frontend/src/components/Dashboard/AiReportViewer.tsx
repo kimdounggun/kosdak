@@ -198,19 +198,19 @@ export default function AiReportViewer({ report }: AiReportViewerProps) {
                 return (
                     <div key={index}>
                         <div className="glass-panel px-8 py-6">
-                            {/* 콘텐츠 영역 */}
-                            <div className="flex-1 min-w-0">
-                                {/* 타이틀 - Semi-Bold + 네온 언더라인 */}
-                                <div className="mb-4">
-                                    <h3 className="text-lg font-semibold text-white tracking-tight inline-block">
-                                        {institutionalTitle}
-                                    </h3>
-                                    <div className="h-px w-16 bg-[#00E5A8] mt-2"></div>
-                                </div>
-                                
-                                {/* 내용 - Thin 폰트, 핵심 숫자 강조 */}
-                                <div className="text-[#CFCFCF] leading-relaxed text-base font-light">
-                                    {highlightContent(section.content)}
+                                {/* 콘텐츠 영역 */}
+                                <div className="flex-1 min-w-0">
+                                    {/* 타이틀 - Semi-Bold + 네온 언더라인 */}
+                                    <div className="mb-4">
+                                        <h3 className="text-lg font-semibold text-white tracking-tight inline-block">
+                                            {institutionalTitle}
+                                        </h3>
+                                        <div className="h-px w-16 bg-[#00E5A8] mt-2"></div>
+                                    </div>
+                                    
+                                    {/* 내용 - Thin 폰트, 핵심 숫자 강조 */}
+                                    <div className="text-[#CFCFCF] leading-relaxed text-base font-light">
+                                        {highlightContent(section.content)}
                                 </div>
                             </div>
                         </div>
