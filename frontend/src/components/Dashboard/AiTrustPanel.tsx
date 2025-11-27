@@ -28,11 +28,11 @@ export default function AiTrustPanel({ aiReport, generatingReport }: AiTrustPane
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <p className="text-gray-400 mb-0.5">모델</p>
-                <p className="text-white font-semibold">{aiReport?.metadata?.model || 'GPT-4 Turbo'}</p>
+                <p className="text-white font-semibold">{aiReport?.metadata?.model || 'GPT-4o-mini'}</p>
               </div>
               <div>
                 <p className="text-gray-400 mb-0.5">버전</p>
-                <p className="text-white font-semibold">{aiReport?.metadata?.modelVersion || 'gpt-4-turbo-2024-04-09'}</p>
+                <p className="text-white font-semibold">{aiReport?.metadata?.modelVersion || 'gpt-4o-mini-2024-07-18'}</p>
               </div>
               <div>
                 <p className="text-gray-400 mb-0.5">분석 시간</p>
@@ -45,7 +45,7 @@ export default function AiTrustPanel({ aiReport, generatingReport }: AiTrustPane
             </div>
             <div className="mt-3 pt-3 border-t border-gray-700">
               <p className="text-xs text-gray-400 leading-relaxed">
-                <span className="text-blue-400 font-semibold">OpenAI GPT-4 Turbo</span>를 사용하여 실시간 주식 데이터를 분석합니다. 
+                <span className="text-blue-400 font-semibold">OpenAI GPT-4o-mini</span>를 사용하여 실시간 주식 데이터를 분석합니다. 
                 금융 시장 분석에 특화된 프롬프트와 함께 최신 기술적 지표를 종합적으로 평가합니다.
               </p>
             </div>

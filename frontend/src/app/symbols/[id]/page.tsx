@@ -1299,7 +1299,7 @@ export default function SymbolDetailPage() {
               <Sparkles className="w-10 h-10 text-primary-400 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 animate-pulse" />
             </div>
             
-            <h3 className="text-white font-bold text-2xl mb-3">GPT-4 Turbo 분석 중</h3>
+            <h3 className="text-white font-bold text-2xl mb-3">GPT-4o-mini 분석 중</h3>
             <p className="text-gray-300 text-center mb-4">
               {symbol?.name || '종목'}의 실시간 데이터를 AI가 분석하고 있습니다
             </p>
@@ -1329,7 +1329,7 @@ export default function SymbolDetailPage() {
             </div>
 
             <div className="text-xs text-gray-400 bg-black/30 rounded-lg px-4 py-2 mb-4">
-              <p className="mb-1">🔹 사용 모델: GPT-4 Turbo (gpt-4-turbo-2024-04-09)</p>
+              <p className="mb-1">🔹 사용 모델: GPT-4o-mini (gpt-4o-mini-2024-07-18)</p>
               <p>🔹 예상 소요 시간: 3~5초</p>
             </div>
 

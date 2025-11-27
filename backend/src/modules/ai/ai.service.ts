@@ -102,7 +102,7 @@ export class AiService {
         };
 
         const completion = await this.openai.chat.completions.create({
-          model: 'gpt-4-turbo-preview',
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'system',
@@ -121,8 +121,8 @@ export class AiService {
         rawResponse = content;
         
         // 메타데이터 업데이트
-        metadata.model = 'gpt-4-turbo-preview';
-        metadata.modelVersion = 'gpt-4-turbo-2024-04-09';
+        metadata.model = 'gpt-4o-mini';
+        metadata.modelVersion = 'gpt-4o-mini-2024-07-18';
         metadata.tokensUsed = completion.usage?.total_tokens || 0;
         metadata.processingTimeMs = Date.now() - startTime;
 
