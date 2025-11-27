@@ -2229,7 +2229,7 @@ export default function SymbolDetailPage() {
                   </div>
 
                   {/* AI 기반 스윙 전략 템플릿 */}
-                  {(aiConclusion.action === '강력 매수' || aiConclusion.action === '매수') && (() => {
+                  {(aiConclusion.action === '강력 매수' || aiConclusion.action === '매수') ? (() => {
                     const strategy = generateSwingStrategy()
                     if (!strategy) return null
                     
@@ -2367,7 +2367,29 @@ export default function SymbolDetailPage() {
                           </div>
                         </div>
                     )
-                  })()}
+                  })() : (
+                    // 매수/강력 매수가 아닐 때 안내 메시지
+                    <div className="mt-5 pt-5 border-t border-[rgba(255,255,255,0.1)]">
+                      <div className="bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] rounded-lg p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-500/20 flex items-center justify-center">
+                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-300 mb-1">스윙 전략 미제공</p>
+                            <p className="text-xs text-gray-500 leading-relaxed">
+                              현재 AI 판단이 <span className="text-orange-400 font-semibold">"{aiConclusion.action}"</span>이므로 
+                              적극적인 진입 전략을 제시하지 않습니다.
+                              <br />
+                              <span className="text-gray-400">매수 신호가 발생하면 상세 스윙 전략이 표시됩니다.</span>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                 </div>
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { History, TrendingUp, TrendingDown, Minus, BarChart3 } from 'lucide-react'
+import { useAuthStore } from '@/stores/authStore'
 
 interface AiHistoryPanelProps {
   symbolId: string
@@ -10,10 +11,13 @@ interface AiHistoryPanelProps {
 export default function AiHistoryPanel({ symbolId }: AiHistoryPanelProps) {
   const [history, setHistory] = useState<any[]>([])
   const [stats, setStats] = useState<any>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null) // null = 로딩 중
+  const { token } = useAuthStore()
 
   useEffect(() => {
     const fetchData = async () => {
-      const token = localStorage.getItem('token')
+      console.log('🔐 토큰 확인:', token ? `있음 (${token.substring(0, 20)}...)` : '없음')
+      setIsLoggedIn(!!token)
       
       // 토큰이 없으면 데이터를 가져오지 않음
       if (!token) {
@@ -25,39 +29,54 @@ export default function AiHistoryPanel({ symbolId }: AiHistoryPanelProps) {
 
       try {
         // 히스토리 가져오기
-        const historyRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/ai/reports/history/${symbolId}`, {
+        const historyRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/ai/reports/history/${symbolId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         })
+        
+        console.log('📡 히스토리 API 응답:', historyRes.status, historyRes.statusText)
         
         if (historyRes.ok) {
           const historyData = await historyRes.json()
           console.log('📜 히스토리 데이터:', historyData)
           setHistory(historyData)
         } else if (historyRes.status === 401) {
-          console.warn('⚠️ 인증 만료됨. 다시 로그인이 필요합니다.')
+          console.warn('⚠️ 401 인증 실패 - 토큰이 유효하지 않음')
+          setIsLoggedIn(false)
+          setHistory([])
+        } else if (historyRes.status === 404) {
+          console.warn('⚠️ 404 API 없음 - 백엔드에 엔드포인트가 없음')
+          // 404면 API가 없는 것이지 로그인 문제가 아님
           setHistory([])
         } else {
+          console.warn('⚠️ 기타 에러:', historyRes.status)
           setHistory([])
         }
 
         // 통계 가져오기
-        const statsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/ai/reports/stats/${symbolId}`, {
+        const statsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/ai/reports/stats/${symbolId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         })
+        
+        console.log('📡 통계 API 응답:', statsRes.status, statsRes.statusText)
         
         if (statsRes.ok) {
           const statsData = await statsRes.json()
           console.log('📊 백테스팅 통계 데이터:', statsData)
           setStats(statsData)
         } else if (statsRes.status === 401) {
-          console.warn('⚠️ 인증 만료됨. 다시 로그인이 필요합니다.')
+          console.warn('⚠️ 401 인증 실패 - 토큰이 유효하지 않음')
+          setIsLoggedIn(false)
+          setStats(null)
+        } else if (statsRes.status === 404) {
+          console.warn('⚠️ 404 API 없음 - 백엔드에 엔드포인트가 없음')
+          // 404면 API가 없는 것이지 로그인 문제가 아님
           setStats(null)
         } else {
-          console.warn('⚠️ 통계 로드 실패:', statsRes.status)
+          console.warn('⚠️ 기타 에러:', statsRes.status)
           setStats(null)
         }
       } catch (error) {
@@ -68,19 +87,35 @@ export default function AiHistoryPanel({ symbolId }: AiHistoryPanelProps) {
     }
 
     fetchData()
-  }, [symbolId])
+  }, [symbolId, token])
+
+  // action 문자열에서 핵심 액션만 추출 (긴 텍스트 방지)
+  const extractAction = (action: string): string => {
+    if (!action) return '관망'
+    if (action.includes('강력 매수')) return '강력 매수'
+    if (action.includes('매수')) return '매수'
+    if (action.includes('매도')) return '매도'
+    if (action.includes('주의')) return '주의'
+    if (action.includes('관망')) return '관망'
+    // 너무 긴 경우 첫 단어만 (최대 4글자)
+    const firstWord = action.split(' ')[0]
+    return firstWord.length <= 4 ? firstWord : '관망'
+  }
 
   const getActionColor = (action: string) => {
-    if (action.includes('강력 매수')) return 'text-[#00FFC8] bg-[#00FFC8]/10 border-[#00FFC8]/30'
-    if (action.includes('매수')) return 'text-[#00E5A8] bg-[#00E5A8]/10 border-[#00E5A8]/30'
-    if (action.includes('관망')) return 'text-gray-400 bg-gray-400/10 border-gray-400/30'
-    if (action.includes('주의')) return 'text-orange-400 bg-orange-400/10 border-orange-400/30'
-    return 'text-red-400 bg-red-400/10 border-red-400/30'
+    const shortAction = extractAction(action)
+    if (shortAction === '강력 매수') return 'text-[#00FFC8] bg-[#00FFC8]/10 border-[#00FFC8]/30'
+    if (shortAction === '매수') return 'text-[#00E5A8] bg-[#00E5A8]/10 border-[#00E5A8]/30'
+    if (shortAction === '관망') return 'text-gray-400 bg-gray-400/10 border-gray-400/30'
+    if (shortAction === '주의') return 'text-orange-400 bg-orange-400/10 border-orange-400/30'
+    if (shortAction === '매도') return 'text-red-400 bg-red-400/10 border-red-400/30'
+    return 'text-gray-400 bg-gray-400/10 border-gray-400/30'
   }
 
   const getActionIcon = (action: string) => {
-    if (action.includes('매수')) return <TrendingUp className="w-3.5 h-3.5" />
-    if (action.includes('관망')) return <Minus className="w-3.5 h-3.5" />
+    const shortAction = extractAction(action)
+    if (shortAction.includes('매수')) return <TrendingUp className="w-3.5 h-3.5" />
+    if (shortAction === '관망') return <Minus className="w-3.5 h-3.5" />
     return <TrendingDown className="w-3.5 h-3.5" />
   }
 
@@ -144,9 +179,9 @@ export default function AiHistoryPanel({ symbolId }: AiHistoryPanelProps) {
           </>
         ) : (
           <div className="text-center py-8">
-            {!localStorage.getItem('token') ? (
+            {isLoggedIn === false ? (
               <>
-                <p className="text-yellow-400 text-sm mb-2">🔐 로그인이 필요합니다</p>
+                <p className="text-yellow-400 text-sm mb-2">로그인이 필요합니다</p>
                 <p className="text-gray-500 text-xs">백테스팅 통계는 로그인 후 확인할 수 있습니다</p>
               </>
             ) : (
@@ -178,7 +213,7 @@ export default function AiHistoryPanel({ symbolId }: AiHistoryPanelProps) {
                   <div className="flex items-center gap-2 mb-2">
                     <span className={`px-2.5 py-1 rounded-md text-xs font-semibold border flex items-center gap-1.5 ${getActionColor(item.action)}`}>
                       {getActionIcon(item.action)}
-                      {item.action}
+                      {extractAction(item.action)}
                     </span>
                     <span className="text-xs text-gray-500">
                       {new Date(item.date).toLocaleString('ko-KR', {
@@ -217,9 +252,9 @@ export default function AiHistoryPanel({ symbolId }: AiHistoryPanelProps) {
                 </div>
                 <div className="flex-shrink-0">
                   {item.correct === null ? (
-                    <div className="w-6 h-6 rounded-full bg-yellow-400/20 flex items-center justify-center">
-                      <svg className="w-3 h-3 text-yellow-400 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    <div className="w-6 h-6 rounded-full bg-yellow-400/20 flex items-center justify-center" title="24시간 후 결과 측정 예정">
+                      <svg className="w-3.5 h-3.5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
                   ) : item.correct ? (
@@ -240,9 +275,9 @@ export default function AiHistoryPanel({ symbolId }: AiHistoryPanelProps) {
             </div>
           )) : (
             <div className="p-8 text-center">
-              {!localStorage.getItem('token') ? (
+              {isLoggedIn === false ? (
                 <>
-                  <p className="text-yellow-400 text-sm mb-2">🔐 로그인이 필요합니다</p>
+                  <p className="text-yellow-400 text-sm mb-2">로그인이 필요합니다</p>
                   <p className="text-gray-500 text-xs">AI 분석 히스토리는 로그인 후 확인할 수 있습니다</p>
                 </>
               ) : (
