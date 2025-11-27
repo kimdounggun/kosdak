@@ -89,6 +89,7 @@ export default function SymbolDetailPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'chart' | 'ai' | 'indicators'>('all')
   const [investmentPeriod, setInvestmentPeriod] = useState<'swing' | 'medium' | 'long'>('swing')
   const [chartView, setChartView] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+  const [cachedReports, setCachedReports] = useState<Map<string, {data: any, timestamp: number}>>(new Map())
 
   useEffect(() => {
     if (!isHydrated) return
@@ -112,15 +113,32 @@ export default function SymbolDetailPage() {
       setCandles(candlesRes.data)
       setIndicators(indicatorsRes.data)
 
+      // AI 리포트 불러오기 (선택사항)
       try {
         const aiRes = await api.get(`/ai/report/latest?symbolId=${params.id}&timeframe=5m`)
         setAiReport(aiRes.data)
       } catch (err) {
-        console.log('No AI report yet')
+        console.log('No AI report yet - 사용자가 생성해야 함')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load data:', error)
-      toast.error('데이터를 불러오지 못했습니다')
+      
+      const status = error.response?.status
+      const message = error.response?.data?.message || error.message
+      
+      if (status === 404) {
+        toast.error('❌ 종목을 찾을 수 없습니다.', { duration: 4000 })
+        setTimeout(() => router.push('/symbols'), 2000)
+      } else if (status === 401 || status === 403) {
+        toast.error('🔒 로그인이 필요합니다.', { duration: 3000 })
+        setTimeout(() => router.push('/login'), 1500)
+      } else if (status === 500) {
+        toast.error(`🚨 서버 오류: ${message}`, { duration: 5000 })
+      } else if (!status) {
+        toast.error('🌐 네트워크 연결을 확인하세요.', { duration: 4000 })
+      } else {
+        toast.error(`데이터 로딩 실패: ${message || '알 수 없는 오류'}`, { duration: 4000 })
+      }
     } finally {
       setLoading(false)
     }
@@ -128,19 +146,61 @@ export default function SymbolDetailPage() {
 
   const generateAiReport = async () => {
     if (generatingReport) return
+    
+    // 캐시 확인 (5분 이내 캐시 사용)
+    const cacheKey = `${params.id}-${investmentPeriod}`
+    const cached = cachedReports.get(cacheKey)
+    
+    if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
+      console.log('✅ 캐시된 AI 리포트 사용:', cacheKey)
+      setAiReport(cached.data)
+      toast.success('캐시된 분석 불러오기 완료!', { id: 'ai', duration: 2000 })
+      return
+    }
+    
     try {
       setGeneratingReport(true)
       toast.loading('AI 분석 중...', { id: 'ai' })
+      
       const response = await api.post('/ai/report', {
         symbolId: params.id,
         timeframe: '5m',
         reportType: 'comprehensive',
-        investmentPeriod: investmentPeriod  // 투자 기간 파라미터 추가
+        investmentPeriod: investmentPeriod
       })
+      
       setAiReport(response.data)
+      
+      // 캐시에 저장
+      const newCache = new Map(cachedReports)
+      newCache.set(cacheKey, {
+        data: response.data,
+        timestamp: Date.now()
+      })
+      setCachedReports(newCache)
+      console.log('💾 AI 리포트 캐시 저장:', cacheKey)
+      
       toast.success('AI 분석 완료!', { id: 'ai' })
-    } catch (error) {
-      toast.error('AI 분석 실패', { id: 'ai' })
+    } catch (error: any) {
+      console.error('AI 분석 에러:', error)
+      
+      // 상세한 에러 메시지
+      const status = error.response?.status
+      const message = error.response?.data?.message || error.message
+      
+      if (status === 429) {
+        toast.error('⏱️ 요청이 너무 많습니다. 1분 후 다시 시도하세요.', { id: 'ai', duration: 5000 })
+      } else if (status === 402 || status === 403) {
+        toast.error('💰 API 크레딧이 부족합니다. 관리자에게 문의하세요.', { id: 'ai', duration: 5000 })
+      } else if (status === 500) {
+        toast.error(`🚨 서버 오류: ${message}`, { id: 'ai', duration: 5000 })
+      } else if (status === 404) {
+        toast.error('❌ 종목 데이터를 찾을 수 없습니다.', { id: 'ai', duration: 4000 })
+      } else if (!status) {
+        toast.error('🌐 네트워크 연결을 확인하세요.', { id: 'ai', duration: 4000 })
+      } else {
+        toast.error(`❌ AI 분석 실패: ${message || '알 수 없는 오류'}`, { id: 'ai', duration: 4000 })
+      }
     } finally {
       setGeneratingReport(false)
     }
@@ -196,6 +256,85 @@ export default function SymbolDetailPage() {
   } else {
     console.log('캔들 데이터 없음')
   }
+
+  // ===== 데이터 유효성 검증 함수들 =====
+
+  // 데이터 신선도 체크
+  const checkDataFreshness = () => {
+    if (!candles || candles.length === 0) return { isFresh: false, age: null, isStale: false, isCritical: false }
+    
+    const latestTimestamp = new Date(candles[0].timestamp)
+    const now = new Date()
+    const ageInMinutes = (now.getTime() - latestTimestamp.getTime()) / (1000 * 60)
+    
+    return {
+      isFresh: ageInMinutes <= 30,     // 30분 이내면 신선
+      age: Math.round(ageInMinutes),
+      isStale: ageInMinutes > 60,      // 1시간 넘으면 오래됨
+      isCritical: ageInMinutes > 180   // 3시간 넘으면 심각
+    }
+  }
+
+  // 지표 값 범위 검증
+  const validateIndicators = () => {
+    if (!indicators || !candles || candles.length === 0) {
+      return { isValid: false, errors: ['데이터를 불러올 수 없습니다'] }
+    }
+
+    const errors: string[] = []
+    
+    // RSI는 0~100 범위여야 함
+    if (indicators.rsi !== undefined && (indicators.rsi < 0 || indicators.rsi > 100)) {
+      errors.push(`RSI 값 이상: ${indicators.rsi.toFixed(2)} (정상 범위: 0~100)`)
+    }
+    
+    // 가격은 양수여야 함
+    if (candles[0]?.close && candles[0].close <= 0) {
+      errors.push(`가격 값 이상: ${candles[0].close}원 (양수여야 함)`)
+    }
+    
+    // 거래량은 양수여야 함
+    if (candles[0]?.volume !== undefined && candles[0].volume < 0) {
+      errors.push(`거래량 값 이상: ${candles[0].volume}`)
+    }
+    
+    // 이동평균선은 양수여야 함
+    if (indicators.ma5 !== undefined && indicators.ma5 <= 0) {
+      errors.push(`MA5 값 이상: ${indicators.ma5}`)
+    }
+    if (indicators.ma20 !== undefined && indicators.ma20 <= 0) {
+      errors.push(`MA20 값 이상: ${indicators.ma20}`)
+    }
+    
+    // MACD 값이 너무 극단적이면 이상
+    if (indicators.macd !== undefined && Math.abs(indicators.macd) > 10000) {
+      errors.push(`MACD 값 이상: ${indicators.macd} (너무 극단적)`)
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    }
+  }
+
+  // 최소 데이터 요구사항 체크
+  const checkMinimumData = () => {
+    const minCandles = 10  // 최소 10개 캔들 필요
+    const hasEnoughCandles = candles && candles.length >= minCandles
+    const hasIndicators = indicators !== null && indicators !== undefined
+    
+    return {
+      isValid: hasEnoughCandles && hasIndicators,
+      candleCount: candles?.length || 0,
+      minRequired: minCandles,
+      hasIndicators
+    }
+  }
+
+  // 전체 데이터 유효성 검증
+  const dataValidation = validateIndicators()
+  const dataFreshness = checkDataFreshness()
+  const minimumData = checkMinimumData()
 
   // ===== 데이터 계산 함수들 =====
 
@@ -321,39 +460,97 @@ export default function SymbolDetailPage() {
     }
   }
 
-  // Widget 3: AI 신뢰도 분석 (100% 실제 데이터)
+  // Widget 3: AI 신뢰도 분석 (다중 지표 종합)
   const calculateConfidenceMetrics = () => {
-    if (!aiReport && !indicators) {
+    if (!indicators) {
       return { confidence: null, accuracy: null, consistency: null }
     }
 
-    // 1. 신뢰도: AI 리포트 메타데이터 또는 RSI 기반 계산
-    let confidence = null
-    if (aiReport?.metadata?.confidence) {
-      confidence = Math.round(aiReport.metadata.confidence * 100)
-    } else if (indicators?.rsi) {
-      // RSI가 50에서 멀수록 신뢰도 높음 (명확한 방향성)
-      const rsiDeviation = Math.abs(indicators.rsi - 50)
-      confidence = Math.min(95, 50 + rsiDeviation)
+    // 1. 다중 지표 기반 종합 신뢰도 계산
+    let calculatedConfidence = null
+    const signals: number[] = []
+
+    // 1-1. RSI 신호 강도 (0~20점)
+    if (indicators.rsi) {
+      const rsiStrength = Math.abs(indicators.rsi - 50) / 50 * 20
+      signals.push(rsiStrength)
     }
 
-    // 2. 정확도: 신호 일치도 (bullish vs bearish 중 더 큰 값)
-    const regime = calculateSignalRegime()
-    const accuracy = Math.max(regime.bullish, regime.bearish)
+    // 1-2. MACD 신호 강도 (0~20점)
+    if (indicators.macd !== undefined && indicators.macdSignal !== undefined) {
+      const macdDiff = Math.abs(indicators.macd - indicators.macdSignal)
+      const macdStrength = Math.min(20, macdDiff / 100 * 20)
+      signals.push(macdStrength)
+    }
 
-    // 3. 일관성: 최근 캔들 방향성 일치도 (100% 실제 계산)
+    // 1-3. 이동평균선 정배열/역배열 강도 (0~20점)
+    if (indicators.ma5 && indicators.ma20 && indicators.ma60) {
+      const isStrongUptrend = indicators.ma5 > indicators.ma20 && indicators.ma20 > indicators.ma60
+      const isStrongDowntrend = indicators.ma5 < indicators.ma20 && indicators.ma20 < indicators.ma60
+      signals.push((isStrongUptrend || isStrongDowntrend) ? 20 : 10)
+    }
+
+    // 1-4. 거래량 확인 (0~15점)
+    if (indicators.volumeRatio) {
+      const volumeStrength = Math.min(15, (indicators.volumeRatio - 1) * 15)
+      signals.push(Math.max(0, volumeStrength))
+    }
+
+    // 1-5. 신호 일치도 (0~25점) - 가장 중요!
+    const regime = calculateSignalRegime()
+    const agreement = Math.max(regime.bullishPercentage || 0, 100 - (regime.bullishPercentage || 0))
+    signals.push(agreement / 100 * 25)
+
+    // 1-6. 추세 지속성 (0~15점)
+    if (candles && candles.length >= 10) {
+      const recentCandles = candles.slice(0, 10)
+      const upCandles = recentCandles.filter(c => c.close > c.open).length
+      const trendStrength = Math.abs(upCandles - 5) / 5 * 15
+      signals.push(trendStrength)
+    }
+
+    // 신호들의 평균으로 기본 신뢰도 계산
+    if (signals.length > 0) {
+      const avgSignal = signals.reduce((a, b) => a + b, 0) / signals.length
+      calculatedConfidence = Math.min(95, Math.max(30, 50 + avgSignal))
+    }
+
+    // 1-7. 변동성 패널티
+    if (calculatedConfidence && indicators.bollingerUpper && indicators.bollingerLower && candles && candles.length > 0) {
+      const currentPrice = candles[0].close
+      const bbWidth = (indicators.bollingerUpper - indicators.bollingerLower) / currentPrice
+      if (bbWidth > 0.1) { // 볼린저 밴드 폭 10% 이상 (높은 변동성)
+        calculatedConfidence *= 0.9 // 10% 감소
+      }
+    }
+
+    // AI 리포트와 결합 (AI 리포트가 있으면 가중 평균)
+    let finalConfidence = calculatedConfidence
+    if (aiReport?.metadata?.confidence && calculatedConfidence) {
+      const aiConfidence = aiReport.metadata.confidence * 100
+      // AI 70% + 계산값 30% 비중
+      finalConfidence = aiConfidence * 0.7 + calculatedConfidence * 0.3
+    } else if (aiReport?.metadata?.confidence) {
+      finalConfidence = aiReport.metadata.confidence * 100
+    }
+
+    // 2. 정확도: 신호 일치도 (bullish vs bearish 중 더 큰 값의 퍼센티지)
+    const accuracy = regime.bullishPercentage !== null 
+      ? Math.max(regime.bullishPercentage, 100 - regime.bullishPercentage)
+      : null
+
+    // 3. 일관성: 최근 캔들 방향성 일치도
     let consistency = null
     if (candles && candles.length >= 10) {
       const recentCandles = candles.slice(0, 10)
       const upCandles = recentCandles.filter(c => c.close > c.open).length
       const downCandles = recentCandles.filter(c => c.close < c.open).length
-      // 상승 or 하락 캔들 중 더 많은 쪽 비율
       consistency = Math.max(upCandles, downCandles) * 10
     }
 
     return {
-      confidence: confidence !== null ? Math.round(confidence) : null,
-      accuracy: Math.round(accuracy),
+      confidence: finalConfidence !== null ? Math.round(finalConfidence) : null,
+      accuracy: accuracy !== null ? Math.round(accuracy) : null,
       consistency: consistency !== null ? Math.round(consistency) : null
     }
   }
@@ -537,7 +734,7 @@ export default function SymbolDetailPage() {
             title: '첫 진입 (30%)',
             scenarios: [
               {
-                type: 'entry',
+                type: 'entry' as const,
                 condition: '진입 시점',
                 action: `현재가 ${currentPrice.toLocaleString()}원에서 소량 진입 (30%)`,
                 reason: bullishStrength >= 60 
@@ -551,19 +748,19 @@ export default function SymbolDetailPage() {
             title: '추세 확인',
             scenarios: [
               {
-                type: 'bullish',
+                type: 'bullish' as const,
                 condition: `상승 시 (${targetPrice1.toLocaleString()}원 돌파)`,
                 action: `추가 30% 매수`,
                 reason: '추세 강화 확인, 목표가 달성 가능성 증가'
               },
               {
-                type: 'sideways',
+                type: 'sideways' as const,
                 condition: `횡보 시 (${sidewaysRange.low.toLocaleString()}~${sidewaysRange.high.toLocaleString()}원)`,
                 action: `관망 유지`,
                 reason: '방향성 불명확, 돌파/이탈 대기. 3일 이상 횡보 시 청산 검토'
               },
               {
-                type: 'bearish',
+                type: 'bearish' as const,
                 condition: `하락 시 (${(currentPrice * 0.97).toLocaleString()}원 하회)`,
                 action: `손절 준비`,
                 reason: '추세 전환 신호, 추가 하락 시 손절가 도달 주의'
@@ -575,19 +772,19 @@ export default function SymbolDetailPage() {
             title: '최종 판단',
             scenarios: [
               {
-                type: 'target',
+                type: 'target' as const,
                 condition: `목표 달성 (${targetPrice2.toLocaleString()}원 이상)`,
                 action: `분할 익절 (50%→30%→20%)`,
                 reason: `목표 수익률 ${isBullish ? '+5%' : '-5%'} 달성`
               },
               {
-                type: 'hold',
+                type: 'hold' as const,
                 condition: `횡보 지속 (${sidewaysRange.low.toLocaleString()}~${targetPrice1.toLocaleString()}원)`,
                 action: `7일차 전량 청산`,
                 reason: '기회비용 고려, 다음 종목 탐색'
               },
               {
-                type: 'stop',
+                type: 'stop' as const,
                 condition: `손절가 도달 (${stopLoss.toLocaleString()}원 하회)`,
                 action: `즉시 전량 청산`,
                 reason: '손실 확정 -3%, 재진입 타이밍 재분석'
@@ -611,7 +808,7 @@ export default function SymbolDetailPage() {
             title: '초기 진입 (40%)',
             scenarios: [
               {
-                type: 'entry',
+                type: 'entry' as const,
                 condition: '진입 시점',
                 action: `현재가 ${currentPrice.toLocaleString()}원 부근 40% 진입`,
                 reason: bullishStrength >= 60
@@ -625,19 +822,19 @@ export default function SymbolDetailPage() {
             title: '추가 진입 및 모니터링',
             scenarios: [
               {
-                type: 'bullish',
+                type: 'bullish' as const,
                 condition: `상승 시 (${targetPrice1.toLocaleString()}원 돌파)`,
                 action: `추가 40% 매수`,
                 reason: '추세 강화, 5일/20일 이평선 정배열 확인'
               },
               {
-                type: 'sideways',
+                type: 'sideways' as const,
                 condition: `횡보 시 (${sidewaysRange.low.toLocaleString()}~${sidewaysRange.high.toLocaleString()}원)`,
                 action: `추가 매수 보류`,
                 reason: '방향성 불명확, 2주 이상 횡보 시 일부 청산 검토'
               },
               {
-                type: 'bearish',
+                type: 'bearish' as const,
                 condition: `하락 시 (${(currentPrice * 0.93).toLocaleString()}원 하회)`,
                 action: `손절 라인 접근`,
                 reason: '20일 이평선 이탈, 추세 전환 신호'
@@ -649,19 +846,19 @@ export default function SymbolDetailPage() {
             title: '최종 판단',
             scenarios: [
               {
-                type: 'target',
+                type: 'target' as const,
                 condition: `목표 달성 (${targetPrice2.toLocaleString()}원 이상)`,
                 action: `분할 익절 (60%→30%→10%)`,
                 reason: `목표 수익률 ${isBullish ? '+12%' : '-8%'} 달성`
               },
               {
-                type: 'hold',
+                type: 'hold' as const,
                 condition: `추세 유지 (${targetPrice1.toLocaleString()}원 이상)`,
                 action: `홀딩 또는 부분 익절`,
                 reason: '중기 추세 지속, 목표가 재상향 검토'
               },
               {
-                type: 'stop',
+                type: 'stop' as const,
                 condition: `손절가 도달 (${stopLoss.toLocaleString()}원 하회)`,
                 action: `전량 청산`,
                 reason: '손실 확정 -8%, 재진입 전략 수립'
@@ -691,7 +888,7 @@ export default function SymbolDetailPage() {
                 reason: '장기 관점 평균 단가 낮추기, 변동성 분산'
               },
               {
-                type: 'sideways',
+                type: 'sideways' as const,
                 condition: `현재가 유지 (${currentPrice.toLocaleString()}원 부근)`,
                 action: `2~3회 분할 매수`,
                 reason: '횡보 구간 활용, 저점 매수 기회 탐색'
@@ -703,19 +900,19 @@ export default function SymbolDetailPage() {
             title: '추세 전환 대기',
             scenarios: [
               {
-                type: 'bullish',
+                type: 'bullish' as const,
                 condition: `20일선 돌파 (${ma20.toLocaleString()}원 이상)`,
                 action: `추세 확인, 홀딩 유지`,
                 reason: '중장기 상승 전환, 목표가 상향 조정'
               },
               {
-                type: 'sideways',
+                type: 'sideways' as const,
                 condition: `박스권 횡보 (${(currentPrice * 0.95).toLocaleString()}~${(currentPrice * 1.05).toLocaleString()}원)`,
                 action: `관망 유지`,
                 reason: '기업 실적/뉴스 모니터링, 돌파 대기'
               },
               {
-                type: 'bearish',
+                type: 'bearish' as const,
                 condition: `추세 약화 (20일선 하회)`,
                 action: `손절 라인 점검`,
                 reason: '장기 하락 전환 가능성, 리스크 관리'
@@ -727,19 +924,19 @@ export default function SymbolDetailPage() {
             title: '수익 실현 전략',
             scenarios: [
               {
-                type: 'target',
+                type: 'target' as const,
                 condition: `목표 달성 (${targetPrice2.toLocaleString()}원, +${isBullish ? '20' : '10'}%)`,
                 action: `단계적 청산 (50%→30%→20%)`,
                 reason: '장기 목표 달성, 수익 확정'
               },
               {
-                type: 'hold',
+                type: 'hold' as const,
                 condition: `목표 미달 (+5~10%)`,
                 action: `추가 1개월 홀딩 검토`,
                 reason: '장기 추세 유지, 목표가 재설정'
               },
               {
-                type: 'stop',
+                type: 'stop' as const,
                 condition: `손절가 도달 (${stopLoss.toLocaleString()}원, -15%)`,
                 action: `전량 청산`,
                 reason: '장기 하락 추세 확정, 손실 제한'
@@ -820,12 +1017,44 @@ export default function SymbolDetailPage() {
     let period = investmentPeriod === 'swing' ? '단기 스윙 (3~7일)' : 
                  investmentPeriod === 'medium' ? '중기 (2~4주)' : '장기 (1~3개월)'
     
-    // 투자 기간별 임계값 조정
-    const thresholds = investmentPeriod === 'swing' 
+    // 투자 기간별 기본 임계값
+    const baseThresholds = investmentPeriod === 'swing' 
       ? { strong: 70, buy: 55, neutral: 45, caution: 30 }
       : investmentPeriod === 'medium'
       ? { strong: 65, buy: 50, neutral: 40, caution: 25 }
       : { strong: 60, buy: 45, neutral: 35, caution: 20 }
+    
+    // 변동성 기반 동적 임계값 조정
+    const volatility = marketStrength.volatility // '높음', '중간', '낮음'
+    const volatilityAdjustment = volatility === '높음' 
+      ? 5   // 변동성 높으면 더 보수적 (임계값 상향)
+      : volatility === '낮음' 
+      ? -5  // 변동성 낮으면 더 공격적 (임계값 하향)
+      : 0   // 중간이면 기본값 유지
+    
+    // 신호 일치도 기반 조정 (일치도가 낮으면 더 보수적)
+    const signalAgreement = signalRegime.bullishPercentage || 50
+    const signalAdjustment = signalAgreement < 40 || signalAgreement > 60 
+      ? 0   // 신호가 명확하면 조정 없음
+      : 3   // 신호가 불명확하면 보수적 (임계값 상향)
+    
+    // 최종 임계값 계산
+    const thresholds = {
+      strong: Math.min(90, baseThresholds.strong + volatilityAdjustment + signalAdjustment),
+      buy: Math.min(85, baseThresholds.buy + volatilityAdjustment + signalAdjustment),
+      neutral: baseThresholds.neutral + Math.floor(signalAdjustment / 2),
+      caution: baseThresholds.caution
+    }
+    
+    // 디버그 로그
+    console.log('📊 동적 임계값 계산:', {
+      기본임계값: baseThresholds,
+      변동성: volatility,
+      변동성조정: volatilityAdjustment,
+      신호일치도: `${signalAgreement}%`,
+      신호조정: signalAdjustment,
+      최종임계값: thresholds
+    })
     
     if (totalScore >= thresholds.strong) {
       action = '강력 매수'
@@ -911,14 +1140,102 @@ export default function SymbolDetailPage() {
 
   return (
     <DashboardLayout>
+      {/* AI 분석 생성 중 오버레이 */}
+      {generatingReport && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-dark-100 p-8 rounded-xl shadow-2xl flex flex-col items-center max-w-md mx-4">
+            <div className="relative">
+              <div className="animate-spin w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full"></div>
+              <Sparkles className="w-8 h-8 text-primary-400 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+            </div>
+            <h3 className="text-white font-bold text-xl mt-6 mb-2">AI가 분석 중입니다</h3>
+            <p className="text-gray-300 text-center mb-1">
+              {symbol?.name || '종목'}의 기술적 지표를 분석하고 있습니다
+            </p>
+            <p className="text-gray-400 text-sm">약 3~5초 소요됩니다</p>
+            <div className="mt-4 flex gap-2">
+              <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+              <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+              <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3 sm:space-y-4">
+
+        {/* 데이터 유효성 경고 메시지 */}
+        {!dataValidation.isValid && (
+          <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">🚨</span>
+              <div className="flex-1">
+                <h3 className="text-red-400 font-bold mb-2">데이터 오류 감지</h3>
+                <ul className="list-disc pl-5 text-red-300 text-sm space-y-1">
+                  {dataValidation.errors.map((err, i) => (
+                    <li key={i}>{err}</li>
+                  ))}
+                </ul>
+                <p className="mt-3 text-red-400 text-sm">
+                  분석 결과를 신뢰하지 마세요. 관리자에게 문의하세요.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 최소 데이터 부족 경고 */}
+        {!minimumData.isValid && (
+          <div className="bg-yellow-900/20 border border-yellow-500/50 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">⚠️</span>
+              <div className="flex-1">
+                <h3 className="text-yellow-400 font-bold mb-2">데이터 부족</h3>
+                <p className="text-yellow-300 text-sm">
+                  정확한 분석을 위해 최소 {minimumData.minRequired}개의 캔들 데이터가 필요합니다.
+                </p>
+                <p className="text-yellow-200 text-sm mt-1">
+                  현재: <span className="font-bold">{minimumData.candleCount}개</span>
+                  {!minimumData.hasIndicators && ' | 기술적 지표 없음'}
+                </p>
+                <p className="mt-2 text-yellow-400 text-xs">
+                  신규 상장 종목이거나 데이터 수집 중일 수 있습니다.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 데이터 신선도 경고 */}
+        {dataFreshness.isStale && !dataFreshness.isCritical && (
+          <div className="bg-yellow-900/20 border border-yellow-500/50 rounded-lg p-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">⚠️</span>
+              <p className="text-yellow-300 text-sm">
+                데이터가 <span className="font-bold">{dataFreshness.age}분</span> 전 것입니다. 
+                최신 정보가 아닐 수 있습니다.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {dataFreshness.isCritical && dataFreshness.age !== null && (
+          <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🚨</span>
+              <p className="text-red-300 text-sm">
+                데이터가 매우 오래되었습니다 
+                (<span className="font-bold">{Math.floor(dataFreshness.age / 60)}시간 {dataFreshness.age % 60}분</span> 전).
+                분석 결과를 신뢰하지 마세요!
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* 상단 헤더 - 가격 정보 (유리 패널) */}
         <div className="glass-panel rounded-lg p-3 sm:p-4 lg:p-6 relative">
           {/* 20분 지연 워터마크 */}
-          <div className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-[rgba(255,77,77,0.1)] border border-[rgba(255,77,77,0.3)] px-2 py-1 rounded">
-            <span className="text-[10px] sm:text-xs text-[#FF4D4D] font-semibold">⏱ 지연</span>
-          </div>
+          
           <div className="flex flex-col gap-2 mb-3 sm:mb-4">
             <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-white leading-tight pr-12">{symbol?.name}</h1>
             <span className="text-xs sm:text-sm text-[#CFCFCF] font-mono">{symbol?.code} · {symbol?.market}</span>
@@ -1603,7 +1920,7 @@ export default function SymbolDetailPage() {
                                         text: '#FF4D4D'
                                       }
                                     }
-                                    const scenarioStyle = scenarioIcons[scenario.type] || scenarioIcons['hold']
+                                    const scenarioStyle = scenarioIcons[scenario.type as keyof typeof scenarioIcons] || scenarioIcons['hold']
                                     
                                     return (
                                       <div 
