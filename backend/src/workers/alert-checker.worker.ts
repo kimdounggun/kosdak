@@ -12,8 +12,8 @@ export class AlertCheckerWorker {
     private notificationsService: NotificationsService,
   ) {}
 
-  // Run every minute
-  @Cron('*/1 * * * *')
+  // 비활성화: 알림 기능 미사용
+  // @Cron('*/1 * * * *')
   async checkAlerts() {
     this.logger.debug('Checking active alerts...');
 

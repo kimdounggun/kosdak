@@ -1819,65 +1819,41 @@ export default function SymbolDetailPage() {
                             : 0
                           
                           return (
-                            <div className="bg-[#1a1a1a] border-2 border-[#00E5A8] rounded-lg p-3 shadow-2xl">
-                              <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-700">
-                                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                <p className="text-xs font-semibold text-white">
-                                  {new Date(candle.timestamp).toLocaleString('ko-KR', {
-                                    year: 'numeric',
-                                    month: 'long',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                    hour12: true
-                                  })}
-                                </p>
+                            <div className="bg-[#1a1a1a]/95 border border-[#00E5A8]/50 rounded-md p-2 shadow-xl text-[10px] sm:text-xs max-w-[160px] sm:max-w-none">
+                              {/* 시간 - 모바일에서는 짧게 */}
+                              <p className="text-[9px] sm:text-xs text-gray-400 mb-1.5 pb-1 border-b border-gray-700/50">
+                                {new Date(candle.timestamp).toLocaleString('ko-KR', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </p>
+                              {/* 가격 정보 - 2열 그리드로 컴팩트하게 */}
+                              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-500">시</span>
+                                  <span className="font-semibold text-white">{(candle.open/1000).toFixed(1)}K</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-500">고</span>
+                                  <span className="font-semibold text-[#00E5A8]">{(candle.high/1000).toFixed(1)}K</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-500">저</span>
+                                  <span className="font-semibold text-[#FF4D4D]">{(candle.low/1000).toFixed(1)}K</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-500">종</span>
+                                  <span className="font-semibold text-white">{(candle.close/1000).toFixed(1)}K</span>
+                                </div>
                               </div>
-                              <div className="space-y-1.5">
-                                <div className="flex justify-between gap-4">
-                                  <span className="text-xs text-gray-400">시가</span>
-                                  <span className="text-xs font-bold text-white">{candle.open.toLocaleString()}원</span>
-                                </div>
-                                <div className="flex justify-between gap-4">
-                                  <span className="text-xs text-gray-400">고가</span>
-                                  <span className="text-xs font-bold text-[#00E5A8]">{candle.high.toLocaleString()}원</span>
-                                </div>
-                                <div className="flex justify-between gap-4">
-                                  <span className="text-xs text-gray-400">저가</span>
-                                  <span className="text-xs font-bold text-[#FF4D4D]">{candle.low.toLocaleString()}원</span>
-                                </div>
-                                <div className="flex justify-between gap-4">
-                                  <span className="text-xs text-gray-400">종가</span>
-                                  <span className="text-xs font-bold text-white">{candle.close.toLocaleString()}원</span>
-                                </div>
-                                <div className="flex justify-between gap-4">
-                                  <span className="text-xs text-gray-400">변화</span>
-                                  <span className={`text-xs font-bold ${candleChange >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
-                                    {candleChange >= 0 ? '+' : ''}{candleChange.toFixed(2)}%
-                                  </span>
-                                </div>
-                                {candle.volume !== undefined && candle.volume > 0 && (
-                                  <div className="border-t border-gray-700 pt-1.5 mt-1.5">
-                                    <div className="flex justify-between gap-4">
-                                      <span className="text-xs text-gray-400">거래량</span>
-                                      <span className="text-xs font-bold text-[#00D1FF]">{candle.volume.toLocaleString()}주</span>
-                                    </div>
-                                  </div>
-                                )}
-                                {candle.ma5 && (
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-xs text-[#FFB800]">MA5</span>
-                                    <span className="text-xs font-bold text-[#FFB800]">{candle.ma5.toLocaleString()}원</span>
-                                  </div>
-                                )}
-                                {candle.ma20 && (
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-xs text-[#00D1FF]">MA20</span>
-                                    <span className="text-xs font-bold text-[#00D1FF]">{candle.ma20.toLocaleString()}원</span>
-                                  </div>
-                                )}
+                              {/* 변화율 */}
+                              <div className="mt-1 pt-1 border-t border-gray-700/50 flex justify-between">
+                                <span className="text-gray-500">변화</span>
+                                <span className={`font-bold ${candleChange >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                                  {candleChange >= 0 ? '+' : ''}{candleChange.toFixed(2)}%
+                                </span>
                               </div>
                             </div>
                           )

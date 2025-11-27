@@ -12,8 +12,8 @@ export class AiReportWorker {
     private symbolsService: SymbolsService,
   ) {}
 
-  // Run at 9 AM and 3 PM every day
-  @Cron('0 9,15 * * *')
+  // 비활성화: 사용자가 버튼 클릭할 때만 AI 분석
+  // @Cron('0 9,15 * * *')
   async generateDailyReports() {
     this.logger.log('Starting daily AI report generation...');
 
