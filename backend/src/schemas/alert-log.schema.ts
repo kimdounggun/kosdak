@@ -42,3 +42,6 @@ AlertLogSchema.index({ triggeredAt: -1 });
 
 
 
+
+
+

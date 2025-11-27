@@ -2463,7 +2463,7 @@ export default function SymbolDetailPage() {
                 {/* 상세 AI 분석 리포트 */}
                 <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8">
                   <div className="flex justify-between items-center mb-3 sm:mb-4">
-                    <h2 className="text-xl sm:text-2xl font-bold text-white">AI 분석 리포트 (상세)</h2>
+                    <h2 className="text-xl sm:text-2xl font-bold text-white">AI 분석 리포트</h2>
                     <span className="text-sm sm:text-base text-[#CFCFCF] font-medium">
                       {new Date(aiReport.createdAt).toLocaleString('ko-KR')}
                     </span>
