@@ -8,7 +8,7 @@
     "frontend"
   ],
   "scripts": {
-    "install": "cd backend && npm install && cd ../frontend && npm install",
+    "postinstall": "echo 'Dependencies installed'",
     "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"bgBlue.bold,bgMagenta.bold\" \"cd backend && npm run start:dev\" \"cd frontend && npm run dev\"",
     "start": "npm run dev",
     "build": "cd backend && npm run build && cd ../frontend && npm run build",
