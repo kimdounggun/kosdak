@@ -1458,7 +1458,7 @@ export default function SymbolDetailPage() {
               </p>
               <div className="flex items-center gap-1.5 mb-1.5">
                 <p className="text-xl sm:text-2xl font-bold text-white">
-                  {symbol?.currentPrice ? symbol.currentPrice.toLocaleString() : (latestCandle ? latestCandle.close.toLocaleString() : '0')}
+                  {latestCandle ? latestCandle.close.toLocaleString() : (symbol?.currentPrice ? symbol.currentPrice.toLocaleString() : '0')}
                   <span className="text-xs ml-0.5">원</span>
                 </p>
                 {candles && candles.length > 0 && (
