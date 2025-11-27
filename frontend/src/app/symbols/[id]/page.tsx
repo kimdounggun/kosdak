@@ -761,9 +761,13 @@ export default function SymbolDetailPage() {
                 type: 'entry' as const,
                 condition: '진입 시점',
                 action: `현재가 ${currentPrice.toLocaleString()}원에서 소량 진입 (30%)`,
-                reason: bullishStrength >= 60 
-                  ? `매수 신호 ${bullishStrength}% - 진입 적정` 
-                  : `신호 강도 ${bullishStrength}% - 신중한 진입`
+                reason: bullishStrength >= 100 
+                  ? '전 지표 매수 신호 - 진입 조건 최적'
+                  : bullishStrength >= 80
+                  ? '대부분 지표 매수 신호 - 진입 조건 양호'
+                  : bullishStrength >= 60
+                  ? '지표 혼조세 - 진입 조건 보통'
+                  : '매수 신호 약함 - 신중한 진입 권장'
               }
             ]
           },
@@ -835,9 +839,13 @@ export default function SymbolDetailPage() {
                 type: 'entry' as const,
                 condition: '진입 시점',
                 action: `현재가 ${currentPrice.toLocaleString()}원 부근 40% 진입`,
-                reason: bullishStrength >= 60
-                  ? '중기 상승 추세 예상, 분할 진입 시작'
-                  : '신중한 진입, 추세 전환 대기'
+                reason: bullishStrength >= 100
+                  ? '전 지표 매수 신호 - 중기 상승 추세 예상'
+                  : bullishStrength >= 80
+                  ? '대부분 지표 매수 신호 - 분할 진입 시작'
+                  : bullishStrength >= 60
+                  ? '지표 혼조세 - 신중한 진입 권장'
+                  : '매수 신호 약함 - 추세 전환 대기'
               }
             ]
           },
