@@ -127,17 +127,18 @@ async function collectHistoricalData() {
     console.log('✅ MongoDB 연결 성공\n');
 
     // 모든 종목 가져오기
-    const allSymbols = await Symbol.find({});
-    console.log(`📊 DB에 총 ${allSymbols.length}개 종목 존재`);
-    
-    // yahooTicker 확인
-    console.log('\n종목 목록:');
-    allSymbols.forEach(s => {
-      console.log(`  - ${s.name} (${s.code}): yahooTicker = ${s.yahooTicker || 'NULL ❌'}`);
+    const allSymbols = await Symbol.find({
+      yahooTicker: { $exists: true, $ne: null }
     });
     
-    const symbols = allSymbols.filter(s => s.yahooTicker);
-    console.log(`\n✅ yahooTicker 있는 종목: ${symbols.length}개\n`);
+    console.log(`📊 전체 종목: ${allSymbols.length}개`);
+    console.log('\n종목 목록:');
+    allSymbols.forEach(s => {
+      console.log(`  - ${s.name} (${s.code}): yahooTicker = ${s.yahooTicker}`);
+    });
+    
+    const symbols = allSymbols;
+    console.log(`\n✅ 처리할 종목: ${symbols.length}개\n`);
     
     if (symbols.length === 0) {
       console.log('❌ yahooTicker가 설정된 종목이 없습니다!');

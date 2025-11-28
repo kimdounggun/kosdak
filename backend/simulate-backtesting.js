@@ -222,8 +222,12 @@ async function simulateBacktesting() {
       process.exit(1);
     }
 
-    const symbols = await Symbol.find({ yahooTicker: { $exists: true, $ne: null } }).limit(12);
-    console.log(`📊 총 ${symbols.length}개 종목\n`);
+    // 모든 종목 처리
+    const symbols = await Symbol.find({
+      yahooTicker: { $exists: true, $ne: null }
+    });
+    
+    console.log(`📊 전체 종목: ${symbols.length}개\n`);
 
     let totalGenerated = 0;
     let totalSuccess = 0;

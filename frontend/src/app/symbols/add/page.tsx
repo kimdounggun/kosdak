@@ -14,6 +14,7 @@ export default function AddSymbolPage() {
   const [symbols, setSymbols] = useState<any[]>([])
   const [userSymbols, setUserSymbols] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     if (!isHydrated) return
@@ -65,6 +66,18 @@ export default function AddSymbolPage() {
     }
   }
 
+  // 검색 필터링
+  const filteredSymbols = symbols.filter(symbol => {
+    const query = searchQuery.toLowerCase().trim()
+    if (!query) return true
+    
+    return (
+      symbol.name.toLowerCase().includes(query) ||
+      symbol.code.toLowerCase().includes(query) ||
+      symbol.market.toLowerCase().includes(query)
+    )
+  })
+
   if (!isHydrated || !isAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-dark-100">
@@ -75,42 +88,98 @@ export default function AddSymbolPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">종목 추가</h1>
+      <div className="space-y-3 sm:space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-lg sm:text-xl font-bold">종목 추가</h1>
           <button
             onClick={() => router.back()}
-            className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-xs sm:text-sm"
+            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-xs sm:text-sm"
           >
             뒤로가기
           </button>
         </div>
 
+        {/* 검색 바 */}
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="종목명, 코드 검색..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full px-4 py-2.5 bg-dark-200 border border-dark-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 focus:border-transparent placeholder-gray-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* 검색 결과 개수 */}
+        {!loading && (
+          <div className="flex items-center justify-between text-xs text-gray-400">
+            <span>
+              {searchQuery ? (
+                <>검색 결과: <span className="text-primary-500 font-semibold">{filteredSymbols.length}</span>개</>
+              ) : (
+                <>전체: <span className="text-white font-semibold">{symbols.length}</span>개</>
+              )}
+            </span>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="text-primary-500 hover:text-primary-400 transition"
+              >
+                전체 보기
+              </button>
+            )}
+          </div>
+        )}
+
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="space-y-2">
             {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="glass rounded-xl p-6 animate-pulse">
-                <div className="h-6 bg-gray-700 rounded w-3/4 mb-2"></div>
-                <div className="h-4 bg-gray-700 rounded w-1/2"></div>
+              <div key={i} className="glass rounded-lg p-3 animate-pulse">
+                <div className="h-5 bg-gray-700 rounded w-1/2 mb-1.5"></div>
+                <div className="h-3 bg-gray-700 rounded w-1/3"></div>
               </div>
             ))}
           </div>
+        ) : filteredSymbols.length === 0 ? (
+          <div className="glass rounded-lg p-8 text-center">
+            <p className="text-gray-400 text-sm">
+              {searchQuery ? (
+                <>
+                  <span className="text-white font-semibold">"{searchQuery}"</span>에 대한 검색 결과가 없습니다.
+                </>
+              ) : (
+                '추가 가능한 종목이 없습니다.'
+              )}
+            </p>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {symbols.map((symbol) => (
+          <div className="space-y-2">
+            {filteredSymbols.map((symbol) => (
               <div
                 key={symbol._id}
-                className="glass rounded-xl p-4 sm:p-6 hover:bg-dark-200 transition cursor-pointer"
-                onClick={() => addSymbol(symbol._id)}
+                className="glass rounded-lg p-3 hover:bg-dark-200 transition active:scale-[0.98]"
               >
-                <div className="flex flex-col gap-3">
-                  <div>
-                    <h3 className="text-base sm:text-lg font-bold mb-1">{symbol.name}</h3>
-                    <p className="text-xs sm:text-sm text-gray-400">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm sm:text-base font-bold truncate">{symbol.name}</h3>
+                    <p className="text-xs text-gray-400">
                       {symbol.code} · {symbol.market}
                     </p>
                   </div>
-                  <button className="w-full py-1.5 sm:py-2 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition text-xs sm:text-sm">
+                  <button 
+                    onClick={() => addSymbol(symbol._id)}
+                    className="px-4 py-2 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 rounded-lg font-semibold transition text-xs whitespace-nowrap flex-shrink-0"
+                  >
                     추가하기
                   </button>
                 </div>
