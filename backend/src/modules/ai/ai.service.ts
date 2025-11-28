@@ -664,6 +664,7 @@ ${historicalContext.insight}
       // validUntil 체크 제거 - 항상 최신 리포트 반환 ✅
     };
 
+    // ✅ userId 필터링 복원
     if (userId) {
       query.userId = new Types.ObjectId(userId);
     }

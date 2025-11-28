@@ -28,6 +28,9 @@ export class AutoAiAnalysisWorker {
       
       this.logger.log(`📊 분석 대상: ${symbols.length}개 종목`);
       
+      // 🎯 특정 사용자 ID (김동건 계정)
+      const AUTO_USER_ID = '69243880642a931de4044f8b';
+      
       let successCount = 0;
       let failCount = 0;
 
@@ -38,7 +41,7 @@ export class AutoAiAnalysisWorker {
             symbol._id.toString(),
             '5m',
             'comprehensive',
-            undefined, // userId 없음 (시스템 자동 생성)
+            AUTO_USER_ID, // ← 당신 계정으로 생성
             'swing'
           );
 
