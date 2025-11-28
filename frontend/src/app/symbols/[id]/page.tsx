@@ -2190,10 +2190,27 @@ export default function SymbolDetailPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                       </svg>
                     </div>
-                    <div>
+                    <div className="flex-1">
                       <h3 className="text-base font-semibold text-white">현재 추천 전략 요약</h3>
                       <p className="text-xs text-[#00E5A8]">AI가 분석한 최적 투자 전략 • {investmentPeriod === 'swing' ? '단기 스윙' : investmentPeriod === 'medium' ? '중기' : '장기'} 기준</p>
                     </div>
+                    {aiReport && (
+                      <div className="text-right">
+                        <span className="text-xs text-gray-400">
+                          {(() => {
+                            const now = new Date();
+                            const created = new Date(aiReport.createdAt);
+                            const diffMs = now.getTime() - created.getTime();
+                            const diffMins = Math.floor(diffMs / (1000 * 60));
+                            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                            
+                            if (diffMins < 1) return '방금 전 분석';
+                            if (diffMins < 60) return `${diffMins}분 전 분석`;
+                            return `${diffHours}시간 전 분석`;
+                          })()}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   
                   {/* 전략 & 위험도 카드 */}
@@ -2472,9 +2489,26 @@ export default function SymbolDetailPage() {
                 <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8">
                   <div className="flex justify-between items-center mb-3 sm:mb-4">
                     <h2 className="text-xl sm:text-2xl font-bold text-white">AI 분석 리포트</h2>
-                    <span className="text-sm sm:text-base text-[#CFCFCF] font-medium">
-                      {new Date(aiReport.createdAt).toLocaleString('ko-KR')}
-                    </span>
+                    <div className="text-right">
+                      <span className="text-sm sm:text-base text-[#CFCFCF] font-medium block">
+                        {new Date(aiReport.createdAt).toLocaleString('ko-KR')}
+                      </span>
+                      <span className="text-xs text-gray-400 mt-1 block">
+                        {(() => {
+                          const now = new Date();
+                          const created = new Date(aiReport.createdAt);
+                          const diffMs = now.getTime() - created.getTime();
+                          const diffMins = Math.floor(diffMs / (1000 * 60));
+                          const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                          
+                          if (diffMins < 1) return '방금 전 분석';
+                          if (diffMins < 60) return `${diffMins}분 전 분석`;
+                          if (diffHours < 24) return `${diffHours}시간 전 분석`;
+                          return `${diffDays}일 전 분석`;
+                        })()}
+                      </span>
+                    </div>
                   </div>
                   
                   {/* 면책 문구 */}

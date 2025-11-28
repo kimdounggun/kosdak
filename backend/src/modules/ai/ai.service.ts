@@ -49,7 +49,10 @@ export class AiService {
     const latestCandle = candles[0];
     const latestIndicator = indicators.length > 0 ? indicators[0] : null;
 
-    const prompt = this.buildPrompt(symbol, candles, indicators, reportType, investmentPeriod);
+    // 🆕 과거 유사 패턴 분석 (백테스팅 데이터 활용)
+    const historicalContext = await this.getHistoricalContext(symbolId, latestIndicator);
+
+    const prompt = this.buildPrompt(symbol, candles, indicators, reportType, investmentPeriod, historicalContext);
 
     let content = '';
     let metadata: any = {
@@ -61,6 +64,13 @@ export class AiService {
     if (latestIndicator) {
       metadata.rsiAtGeneration = latestIndicator.rsi;
       metadata.volumeAtGeneration = latestCandle.volume;
+      metadata.macd = latestIndicator.macd;
+      metadata.macdSignal = latestIndicator.macdSignal;
+    }
+
+    // 🆕 과거 패턴 정보 메타데이터에 저장
+    if (historicalContext) {
+      metadata.historicalPattern = historicalContext;
     }
 
     // 분석 과정 추적
@@ -237,7 +247,7 @@ export class AiService {
     };
   }
 
-  private buildPrompt(symbol: any, candles: any[], indicators: any[], reportType: string, investmentPeriod: string = 'swing'): string {
+  private buildPrompt(symbol: any, candles: any[], indicators: any[], reportType: string, investmentPeriod: string = 'swing', historicalContext?: any): string {
     // 완성된 캔들 사용 (candles[0]은 진행 중일 수 있음)
     const latest = candles.length > 1 ? candles[1] : candles[0];
     const latestIndicator = indicators[0] || {};
@@ -322,6 +332,34 @@ export class AiService {
       prompt += `• MA20: ${ma20.toFixed(0)}원\n`;
       prompt += `• MA60: ${ma60.toFixed(0)}원\n`;
       prompt += `• 현재가 vs MA20: ${((currentPrice - ma20) / ma20 * 100).toFixed(2)}%\n`;
+    }
+
+    // 🆕 과거 패턴 데이터 추가
+    if (historicalContext && historicalContext.totalCases > 0) {
+      prompt += `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ [과거 실제 데이터 기반 검증 - 최우선 고려사항]
+
+이 종목의 현재와 유사한 상황 (RSI ${latestIndicator.rsi ? latestIndicator.rsi.toFixed(0) : 'N/A'}, MACD ${latestIndicator.macd && latestIndicator.macdSignal ? (latestIndicator.macd > latestIndicator.macdSignal ? '상향' : '하향') : 'N/A'}):
+
+📊 실제 과거 성과:
+• 과거 발생 횟수: ${historicalContext.totalCases}회
+• 실제 성공 횟수: ${historicalContext.successCases}회
+• 실제 성공률: ${historicalContext.successRate}%
+• 평균 수익률: ${historicalContext.avgReturn >= 0 ? '+' : ''}${historicalContext.avgReturn}%
+• 최고 수익률: ${historicalContext.maxReturn >= 0 ? '+' : ''}${historicalContext.maxReturn}%
+• 최저 수익률: ${historicalContext.minReturn >= 0 ? '+' : ''}${historicalContext.minReturn}%
+
+🎯 핵심 인사이트:
+${historicalContext.insight}
+
+⚠️ 중요: 위 실제 성공률을 반드시 최우선으로 고려하세요!
+단순 지표 해석보다 이 종목의 실제 과거 패턴이 더 신뢰할 수 있습니다.
+만약 실제 성공률이 낮다면 (50% 미만), 지표가 좋아도 신중해야 합니다.
+만약 실제 성공률이 높다면 (70% 이상), 지표가 애매해도 긍정적으로 판단할 수 있습니다.
+
+`;
     }
 
     prompt += `
@@ -623,7 +661,7 @@ export class AiService {
     const query: any = {
       symbolId: new Types.ObjectId(symbolId),
       timeframe,
-      validUntil: { $gt: new Date() },
+      // validUntil 체크 제거 - 항상 최신 리포트 반환 ✅
     };
 
     if (userId) {
@@ -730,6 +768,87 @@ export class AiService {
       count: filtered.length,
       accuracy: filtered.length > 0 ? parseFloat((correct / filtered.length * 100).toFixed(0)) : 0,
     };
+  }
+
+  /**
+   * 🆕 과거 유사 패턴 분석 (백테스팅 데이터 활용)
+   * 현재 지표와 유사한 과거 상황의 실제 성과를 조회
+   */
+  private async getHistoricalContext(symbolId: string, currentIndicator: any) {
+    if (!currentIndicator || !currentIndicator.rsi) {
+      return null;
+    }
+
+    try {
+      // RSI ±10, MACD 방향 동일한 과거 케이스 검색
+      const rsiMin = currentIndicator.rsi - 10;
+      const rsiMax = currentIndicator.rsi + 10;
+      const macdDirection = currentIndicator.macd > currentIndicator.macdSignal ? 'bullish' : 'bearish';
+
+      const similarReports = await this.aiReportModel.find({
+        symbolId: new Types.ObjectId(symbolId),
+        'metadata.rsiAtGeneration': { $gte: rsiMin, $lte: rsiMax },
+        'actualOutcome.wasCorrect': { $exists: true },
+        createdAt: { $gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) } // 최근 90일
+      }).lean();
+
+      // MACD 방향 필터링
+      const filteredReports = similarReports.filter(report => {
+        const reportMacd = report.metadata?.macd || 0;
+        const reportSignal = report.metadata?.macdSignal || 0;
+        const reportDirection = reportMacd > reportSignal ? 'bullish' : 'bearish';
+        return reportDirection === macdDirection;
+      });
+
+      if (filteredReports.length === 0) {
+        return null;
+      }
+
+      // 통계 계산
+      const totalCases = filteredReports.length;
+      const successCases = filteredReports.filter(r => r.actualOutcome?.wasCorrect).length;
+      const successRate = Math.round((successCases / totalCases) * 100);
+
+      const returns = filteredReports
+        .map(r => r.actualOutcome?.priceChangePercent || 0)
+        .filter(r => r !== 0);
+
+      const avgReturn = returns.length > 0 
+        ? parseFloat((returns.reduce((sum, r) => sum + r, 0) / returns.length).toFixed(2))
+        : 0;
+
+      const maxReturn = returns.length > 0 ? parseFloat(Math.max(...returns).toFixed(2)) : 0;
+      const minReturn = returns.length > 0 ? parseFloat(Math.min(...returns).toFixed(2)) : 0;
+
+      // 인사이트 생성
+      let insight = '';
+      if (successRate >= 70) {
+        insight = `✅ 이 패턴은 과거 높은 성공률(${successRate}%)을 보였습니다. 신뢰도 높은 신호입니다.`;
+      } else if (successRate >= 50) {
+        insight = `⚠️ 이 패턴은 과거 중간 성공률(${successRate}%)을 보였습니다. 신중한 접근이 필요합니다.`;
+      } else {
+        insight = `❌ 이 패턴은 과거 낮은 성공률(${successRate}%)을 보였습니다. 지표가 좋아도 주의가 필요합니다.`;
+      }
+
+      if (avgReturn < -2) {
+        insight += ` 평균 손실률이 ${avgReturn}%로 높아 리스크가 큽니다.`;
+      } else if (avgReturn > 3) {
+        insight += ` 평균 수익률이 ${avgReturn}%로 양호합니다.`;
+      }
+
+      return {
+        totalCases,
+        successCases,
+        successRate,
+        avgReturn,
+        maxReturn,
+        minReturn,
+        insight
+      };
+    } catch (error) {
+      console.error('Historical context error:', error);
+      return null;
+    }
   }
 }
 

@@ -53,7 +53,61 @@ export default function AiTrustPanel({ aiReport, generatingReport }: AiTrustPane
         </div>
       </div>
 
-      {/* 2. AI 분석 과정 */}
+      {/* 🆕 2. 과거 패턴 분석 (백테스팅 기반) */}
+      {aiReport?.metadata?.historicalPattern && aiReport.metadata.historicalPattern.totalCases > 0 && (
+        <div className="bg-gradient-to-r from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+              <TrendingUp className="w-5 h-5 text-purple-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-white font-bold text-sm mb-2">과거 유사 패턴 분석</h3>
+              <p className="text-xs text-gray-300 mb-3">
+                현재와 비슷한 상황(RSI, MACD)에서 이 종목의 실제 성과입니다.
+              </p>
+              
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="bg-black/30 rounded p-2">
+                  <p className="text-[10px] text-gray-400 mb-0.5">과거 발생</p>
+                  <p className="text-lg font-bold text-white">{aiReport.metadata.historicalPattern.totalCases}<span className="text-xs text-gray-400 ml-1">회</span></p>
+                </div>
+                <div className="bg-black/30 rounded p-2">
+                  <p className="text-[10px] text-gray-400 mb-0.5">실제 성공률</p>
+                  <p className={`text-lg font-bold ${aiReport.metadata.historicalPattern.successRate >= 70 ? 'text-[#00E5A8]' : aiReport.metadata.historicalPattern.successRate >= 50 ? 'text-[#FFB800]' : 'text-[#FF4D4D]'}`}>
+                    {aiReport.metadata.historicalPattern.successRate}<span className="text-xs text-gray-400 ml-1">%</span>
+                  </p>
+                </div>
+                <div className="bg-black/30 rounded p-2">
+                  <p className="text-[10px] text-gray-400 mb-0.5">평균 수익률</p>
+                  <p className={`text-lg font-bold ${aiReport.metadata.historicalPattern.avgReturn >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}`}>
+                    {aiReport.metadata.historicalPattern.avgReturn >= 0 ? '+' : ''}{aiReport.metadata.historicalPattern.avgReturn}<span className="text-xs text-gray-400 ml-1">%</span>
+                  </p>
+                </div>
+                <div className="bg-black/30 rounded p-2">
+                  <p className="text-[10px] text-gray-400 mb-0.5">수익률 범위</p>
+                  <p className="text-sm font-semibold text-white">
+                    {aiReport.metadata.historicalPattern.minReturn}% ~ {aiReport.metadata.historicalPattern.maxReturn}%
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-black/40 border border-purple-500/30 rounded p-3">
+                <p className="text-xs text-purple-300 leading-relaxed">
+                  {aiReport.metadata.historicalPattern.insight}
+                </p>
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-gray-700">
+                <p className="text-[10px] text-gray-400 leading-relaxed">
+                  이 데이터는 최근 90일간 실제 백테스팅 결과입니다. AI는 이 정보를 우선적으로 고려하여 예측합니다.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. AI 분석 과정 */}
       {aiReport?.analysisProcess && (
         <div className="bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] rounded-lg">
           <button
@@ -135,7 +189,7 @@ export default function AiTrustPanel({ aiReport, generatingReport }: AiTrustPane
         </div>
       )}
 
-      {/* 3. 설명 가능한 AI (가중치) */}
+      {/* 4. 설명 가능한 AI (가중치) */}
       {aiReport?.explainability?.factors && aiReport.explainability.factors.length > 0 && (
         <div className="bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] rounded-lg">
           <button
@@ -189,7 +243,7 @@ export default function AiTrustPanel({ aiReport, generatingReport }: AiTrustPane
         </div>
       )}
 
-      {/* 4. AI 원문 보기 */}
+      {/* 5. AI 원문 보기 */}
       {aiReport?.rawResponse && (
         <div className="bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] rounded-lg">
           <button
