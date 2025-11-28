@@ -484,48 +484,74 @@ export default function SymbolDetailPage() {
     }
   }
 
-  // Widget 3: AI 신뢰도 분석 (다중 지표 종합)
+  // Widget 3: 기술적 분석 점수 / AI 신뢰도 (조건부)
   const calculateConfidenceMetrics = () => {
     if (!indicators) {
       return { confidence: null, accuracy: null, consistency: null }
     }
 
-    // 1. 다중 지표 기반 종합 신뢰도 계산
-    let calculatedConfidence = null
+    // AI 리포트가 있으면 AI 신뢰도 우선 사용
+    if (aiReport?.metadata?.confidence) {
+      const aiConfidence = Math.round(aiReport.metadata.confidence * 100)
+      
+      // 정확도: 신호 일치도
+      const regime = calculateSignalRegime()
+      const accuracy = regime.bullishPercentage !== null 
+        ? Math.max(regime.bullishPercentage, 100 - regime.bullishPercentage)
+        : null
+
+      // 일관성: 최근 캔들 방향성
+      let consistency = null
+      if (candles && candles.length >= 10) {
+        const recentCandles = candles.slice(0, 10)
+        const upCandles = recentCandles.filter(c => c.close > c.open).length
+        const downCandles = recentCandles.filter(c => c.close < c.open).length
+        consistency = Math.max(upCandles, downCandles) * 10
+      }
+
+      return {
+        confidence: aiConfidence,
+        accuracy: accuracy !== null ? Math.round(accuracy) : null,
+        consistency: consistency !== null ? Math.round(consistency) : null
+      }
+    }
+
+    // AI 리포트 없으면 기술적 분석 점수 계산
+    let technicalScore = null
     const signals: number[] = []
 
-    // 1-1. RSI 신호 강도 (0~20점)
+    // RSI 신호 강도 (0~20점)
     if (indicators.rsi) {
       const rsiStrength = Math.abs(indicators.rsi - 50) / 50 * 20
       signals.push(rsiStrength)
     }
 
-    // 1-2. MACD 신호 강도 (0~20점)
+    // MACD 신호 강도 (0~20점)
     if (indicators.macd !== undefined && indicators.macdSignal !== undefined) {
       const macdDiff = Math.abs(indicators.macd - indicators.macdSignal)
       const macdStrength = Math.min(20, macdDiff / 100 * 20)
       signals.push(macdStrength)
     }
 
-    // 1-3. 이동평균선 정배열/역배열 강도 (0~20점)
+    // 이동평균선 정배열/역배열 강도 (0~20점)
     if (indicators.ma5 && indicators.ma20 && indicators.ma60) {
       const isStrongUptrend = indicators.ma5 > indicators.ma20 && indicators.ma20 > indicators.ma60
       const isStrongDowntrend = indicators.ma5 < indicators.ma20 && indicators.ma20 < indicators.ma60
       signals.push((isStrongUptrend || isStrongDowntrend) ? 20 : 10)
     }
 
-    // 1-4. 거래량 확인 (0~15점)
+    // 거래량 확인 (0~15점)
     if (indicators.volumeRatio) {
       const volumeStrength = Math.min(15, (indicators.volumeRatio - 1) * 15)
       signals.push(Math.max(0, volumeStrength))
     }
 
-    // 1-5. 신호 일치도 (0~25점) - 가장 중요!
+    // 신호 일치도 (0~25점)
     const regime = calculateSignalRegime()
     const agreement = Math.max(regime.bullishPercentage || 0, 100 - (regime.bullishPercentage || 0))
     signals.push(agreement / 100 * 25)
 
-    // 1-6. 추세 지속성 (0~15점)
+    // 추세 지속성 (0~15점)
     if (candles && candles.length >= 10) {
       const recentCandles = candles.slice(0, 10)
       const upCandles = recentCandles.filter(c => c.close > c.open).length
@@ -533,37 +559,27 @@ export default function SymbolDetailPage() {
       signals.push(trendStrength)
     }
 
-    // 신호들의 평균으로 기본 신뢰도 계산
+    // 신호들의 평균으로 기술적 점수 계산
     if (signals.length > 0) {
       const avgSignal = signals.reduce((a, b) => a + b, 0) / signals.length
-      calculatedConfidence = Math.min(95, Math.max(30, 50 + avgSignal))
+      technicalScore = Math.min(95, Math.max(30, 50 + avgSignal))
     }
 
-    // 1-7. 변동성 패널티
-    if (calculatedConfidence && indicators.bollingerUpper && indicators.bollingerLower && candles && candles.length > 0) {
+    // 변동성 패널티
+    if (technicalScore && indicators.bollingerUpper && indicators.bollingerLower && candles && candles.length > 0) {
       const currentPrice = candles[0].close
       const bbWidth = (indicators.bollingerUpper - indicators.bollingerLower) / currentPrice
-      if (bbWidth > 0.1) { // 볼린저 밴드 폭 10% 이상 (높은 변동성)
-        calculatedConfidence *= 0.9 // 10% 감소
+      if (bbWidth > 0.1) {
+        technicalScore *= 0.9
       }
     }
 
-    // AI 리포트와 결합 (AI 리포트가 있으면 가중 평균)
-    let finalConfidence = calculatedConfidence
-    if (aiReport?.metadata?.confidence && calculatedConfidence) {
-      const aiConfidence = aiReport.metadata.confidence * 100
-      // AI 70% + 계산값 30% 비중
-      finalConfidence = aiConfidence * 0.7 + calculatedConfidence * 0.3
-    } else if (aiReport?.metadata?.confidence) {
-      finalConfidence = aiReport.metadata.confidence * 100
-    }
-
-    // 2. 정확도: 신호 일치도 (bullish vs bearish 중 더 큰 값의 퍼센티지)
+    // 정확도: 신호 일치도
     const accuracy = regime.bullishPercentage !== null 
       ? Math.max(regime.bullishPercentage, 100 - regime.bullishPercentage)
       : null
 
-    // 3. 일관성: 최근 캔들 방향성 일치도
+    // 일관성: 최근 캔들 방향성
     let consistency = null
     if (candles && candles.length >= 10) {
       const recentCandles = candles.slice(0, 10)
@@ -573,7 +589,7 @@ export default function SymbolDetailPage() {
     }
 
     return {
-      confidence: finalConfidence !== null ? Math.round(finalConfidence) : null,
+      confidence: technicalScore !== null ? Math.round(technicalScore) : null,
       accuracy: accuracy !== null ? Math.round(accuracy) : null,
       consistency: consistency !== null ? Math.round(consistency) : null
     }
@@ -729,26 +745,49 @@ export default function SymbolDetailPage() {
     }
   }
 
-  // 투자 기간별 스윙 전략 생성 (AI 기반 - 상황별 시나리오 포함)
+  // AI 리포트에서 전략 정보 파싱
+  const parseAiStrategy = () => {
+    if (!aiReport?.content) return null
+    
+    const content = aiReport.content
+    const currentPrice = candles?.[0]?.close || 0
+    
+    // AI 리포트에서 진입가, 손절가, 목표가 파싱
+    const entryMatch = content.match(/진입가:\s*([\d,]+)원/)
+    const stopLossMatch = content.match(/손절가:\s*\[?현재가[^\]]*\]?\s*([\d,]+)원/)
+    const target1Match = content.match(/1차 목표가:\s*\[?현재가[^\]]*\]?\s*([\d,]+)원/)
+    const target2Match = content.match(/2차 목표가:\s*\[?현재가[^\]]*\]?\s*([\d,]+)원/)
+    
+    const entryPrice = entryMatch ? parseInt(entryMatch[1].replace(/,/g, '')) : currentPrice
+    const stopLoss = stopLossMatch ? parseInt(stopLossMatch[1].replace(/,/g, '')) : currentPrice * 0.97
+    const target1 = target1Match ? parseInt(target1Match[1].replace(/,/g, '')) : currentPrice * 1.03
+    const target2 = target2Match ? parseInt(target2Match[1].replace(/,/g, '')) : currentPrice * 1.05
+    
+    return {
+      entryPrice,
+      stopLoss,
+      target1,
+      target2
+    }
+  }
+
+  // 투자 기간별 스윙 전략 생성 (AI 리포트 기반)
   const generateSwingStrategy = () => {
     if (!indicators || !candles || candles.length === 0) return null
     
     const currentPrice = candles[0].close
     const regime = calculateSignalRegime()
-    const isBullish = regime.bullishCount > regime.totalCount / 2
     const bullishStrength = regime.bullishPercentage
     
-    // AI 기반 목표가/손절가 계산
-    const volatility = indicators.bbUpper && indicators.bbLower && indicators.bbMiddle
-      ? ((indicators.bbUpper - indicators.bbLower) / indicators.bbMiddle * 100)
-      : 3
+    // 🆕 AI 리포트에서 가격 정보 가져오기
+    const aiStrategy = parseAiStrategy()
+    const targetPrice1 = aiStrategy?.target1 || currentPrice * 1.03
+    const targetPrice2 = aiStrategy?.target2 || currentPrice * 1.05
+    const stopLoss = aiStrategy?.stopLoss || currentPrice * 0.97
+    const sidewaysRange = { low: currentPrice * 0.98, high: currentPrice * 1.02 }
     
     if (investmentPeriod === 'swing') {
-      // 3~7일 단기 스윙 전략
-      const targetPrice1 = currentPrice * (isBullish ? 1.03 : 0.97)
-      const targetPrice2 = currentPrice * (isBullish ? 1.05 : 0.95)
-      const stopLoss = currentPrice * 0.97  // -3% (AI 리포트와 일치)
-      const sidewaysRange = { low: currentPrice * 0.98, high: currentPrice * 1.02 }
+      // 3~7일 단기 스윙 전략 (AI 리포트 기반)
       
       return {
         title: '3~7일 스윙 전략',
@@ -803,7 +842,7 @@ export default function SymbolDetailPage() {
                 type: 'target' as const,
                 condition: `목표 달성 (${targetPrice2.toLocaleString()}원 이상)`,
                 action: `분할 익절 (50%→30%→20%)`,
-                reason: `목표 수익률 ${isBullish ? '+5%' : '-5%'} 달성`
+                reason: `목표가 달성 (${((targetPrice2 - currentPrice) / currentPrice * 100).toFixed(1)}% 상승)`
               },
               {
                 type: 'hold' as const,
@@ -822,9 +861,9 @@ export default function SymbolDetailPage() {
         ]
       }
     } else if (investmentPeriod === 'medium') {
-      // 2~4주 중기 전략
-      const targetPrice1 = currentPrice * (isBullish ? 1.05 : 0.95)
-      const targetPrice2 = currentPrice * (isBullish ? 1.12 : 0.92)
+      // 2~4주 중기 전략 (AI 리포트 기반)
+      const targetPrice1 = aiStrategy?.target1 || currentPrice * 1.05
+      const targetPrice2 = aiStrategy?.target2 || currentPrice * 1.12
       const stopLoss = currentPrice * 0.92
       const sidewaysRange = { low: currentPrice * 0.97, high: currentPrice * 1.03 }
       
@@ -881,7 +920,7 @@ export default function SymbolDetailPage() {
                 type: 'target' as const,
                 condition: `목표 달성 (${targetPrice2.toLocaleString()}원 이상)`,
                 action: `분할 익절 (60%→30%→10%)`,
-                reason: `목표 수익률 ${isBullish ? '+12%' : '-8%'} 달성`
+                reason: `목표가 달성 (${((targetPrice2 - currentPrice) / currentPrice * 100).toFixed(1)}% 상승)`
               },
               {
                 type: 'hold' as const,
@@ -900,10 +939,10 @@ export default function SymbolDetailPage() {
         ]
       }
     } else {
-      // 1~3개월 장기 전략
+      // 1~3개월 장기 전략 (AI 리포트 기반)
       const targetPrice1 = currentPrice * 0.95
-      const targetPrice2 = currentPrice * (isBullish ? 1.20 : 1.10)
-      const stopLoss = currentPrice * 0.85
+      const targetPrice2 = aiStrategy?.target2 || currentPrice * 1.20
+      const stopLoss = aiStrategy?.stopLoss || currentPrice * 0.85
       const ma20 = indicators.ma20 || currentPrice
       
       return {
@@ -957,7 +996,7 @@ export default function SymbolDetailPage() {
             scenarios: [
               {
                 type: 'target' as const,
-                condition: `목표 달성 (${targetPrice2.toLocaleString()}원, +${isBullish ? '20' : '10'}%)`,
+                condition: `목표 달성 (${targetPrice2.toLocaleString()}원, +${((targetPrice2 - currentPrice) / currentPrice * 100).toFixed(0)}%)`,
                 action: `단계적 청산 (50%→30%→20%)`,
                 reason: '장기 목표 달성, 수익 확정'
               },
@@ -980,7 +1019,49 @@ export default function SymbolDetailPage() {
     }
   }
 
-  // AI 결론 요약 계산 (투자 기간 고려)
+  // AI 리포트 파싱 함수
+  const parseAiReport = (report: any) => {
+    if (!report?.content) {
+      devLog('❌ parseAiReport: report.content 없음', report)
+      return null
+    }
+
+    const content = report.content
+    devLog('🔍 parseAiReport: content 길이', content.length)
+    
+    // 권장 포지션 파싱
+    const actionMatch = content.match(/권장 포지션:\s*\[?([^\]\n]+)\]?/)
+    const action = actionMatch ? actionMatch[1].trim() : null
+    devLog('🔍 parseAiReport: action =', action, actionMatch ? '✅' : '❌')
+    
+    // 상승 확률 파싱
+    const probabilityMatch = content.match(/상승 확률:\s*(\d+)%/)
+    const probability = probabilityMatch ? parseInt(probabilityMatch[1]) : null
+    devLog('🔍 parseAiReport: probability =', probability, probabilityMatch ? '✅' : '❌')
+    
+    // 리스크 레벨 파싱
+    const riskMatch = content.match(/리스크\s*(?:레벨|요인)?:\s*(낮음|중간|높음)/)
+    const risk = riskMatch ? riskMatch[1] : null
+    devLog('🔍 parseAiReport: risk =', risk, riskMatch ? '✅' : '❌')
+    
+    // 근거 파싱
+    const reasonMatch = content.match(/\(근거:\s*([^)]+)\)/)
+    const reasonText = reasonMatch ? reasonMatch[1] : ''
+    const reasons = reasonText.split('+').map((r: string) => r.trim()).filter((r: string) => r)
+    devLog('🔍 parseAiReport: reasons =', reasons)
+    
+    const result = {
+      action,
+      probability,
+      risk,
+      reasons
+    }
+    devLog('✅ parseAiReport 최종 결과:', result)
+    
+    return result
+  }
+
+  // AI 결론 요약 계산 (AI 리포트 우선)
   const calculateAiConclusion = () => {
     if (!indicators || !candles || candles.length === 0) {
       return {
@@ -991,10 +1072,112 @@ export default function SymbolDetailPage() {
         riskLevel: 'medium',
         recommendation: '데이터 수집 중',
         period: '평가 불가',
-        reasons: []
+        reasons: [],
+        source: 'fallback'
       }
     }
 
+    // 🆕 AI 리포트가 있으면 우선 사용
+    const parsedAi = parseAiReport(aiReport)
+    
+    // AI 리포트 없으면 분석 필요 메시지
+    if (!aiReport) {
+      return {
+        action: 'AI 분석 필요',
+        actionColor: '#8b95a5',
+        shortTerm: 'AI 분석을 생성해주세요',
+        risk: '알 수 없음',
+        riskLevel: 'medium',
+        recommendation: ' "AI 분석" 버튼을 클릭하여 분석을 생성하세요',
+        period: '분석 필요',
+        reasons: [],
+        source: 'no-ai-report'
+      }
+    }
+    
+    if (parsedAi && parsedAi.action && parsedAi.probability !== null) {
+      devLog('✅ AI 리포트 사용:', parsedAi)
+      
+      const { action: aiAction, probability, risk: aiRisk, reasons: aiReasons } = parsedAi
+      
+      // AI 액션을 기반으로 색상 및 세부 정보 결정
+      let actionColor = '#CFCFCF'
+      let shortTerm = ''
+      let recommendation = ''
+      let riskLevel = 'medium'
+      let period = investmentPeriod === 'swing' ? '단기 스윙 (3~7일)' : 
+                   investmentPeriod === 'medium' ? '중기 (2~4주)' : '장기 (1~3개월)'
+      
+      // 리스크 레벨 매핑
+      if (aiRisk === '낮음') {
+        riskLevel = 'low'
+      } else if (aiRisk === '높음') {
+        riskLevel = 'high'
+      } else {
+        riskLevel = 'medium'
+      }
+      
+      // 액션별 설정
+      if (aiAction.includes('강력 매수')) {
+        actionColor = '#00E5A8'
+        shortTerm = `상승 가능성 ${probability}%`
+        
+        if (investmentPeriod === 'swing') {
+          recommendation = `${period} 기간 내 1일차 진입 전략 고려 (현재가 ${candles[0].close.toLocaleString()}원)`
+        } else if (investmentPeriod === 'medium') {
+          recommendation = `이번 주 내 첫 진입 후 2~3주차 추가 매수 (목표: +10~12%)`
+        } else {
+          recommendation = `1개월간 3~4회 분할 매수로 평균 단가 낮추기 (목표: +20~30%)`
+        }
+      } else if (aiAction.includes('매수')) {
+        actionColor = '#00D1FF'
+        shortTerm = `상승 가능성 ${probability}%`
+        
+        if (investmentPeriod === 'swing') {
+          recommendation = `${period} 기간 내 소량 진입 후 추세 확인`
+        } else if (investmentPeriod === 'medium') {
+          recommendation = `1주차 소량 진입 후 2주차 추가 검토 (목표: +7~10%)`
+        } else {
+          recommendation = `첫 달 저점 매수 기회 포착, 2개월차 추세 확인 (목표: +15~20%)`
+        }
+      } else if (aiAction.includes('관망')) {
+        actionColor = '#CFCFCF'
+        shortTerm = `방향성 불명확 (상승 ${probability}%)`
+        recommendation = investmentPeriod === 'swing'
+          ? `${period} 내 명확한 추세 확인 후 진입`
+          : investmentPeriod === 'medium'
+          ? '1주일 추세 확인 후 재평가'
+          : '월간 추세 전환 시점 대기'
+      } else if (aiAction.includes('주의')) {
+        actionColor = '#FFA500'
+        shortTerm = `하락 가능성 ${100 - probability}%`
+        recommendation = '신규 진입 자제, 시장 상황 모니터링'
+        period = investmentPeriod === 'swing' ? '단기 조정 예상' : '중기 조정 예상'
+      } else if (aiAction.includes('매도')) {
+        actionColor = '#FF4D4D'
+        shortTerm = `하락 추세 (상승 ${probability}%)`
+        recommendation = '보유 시 청산 검토 권장'
+        riskLevel = 'very-high'
+        period = '청산 검토 필요'
+      }
+      
+      return {
+        action: aiAction,
+        actionColor,
+        shortTerm,
+        risk: aiRisk || '중간',
+        riskLevel,
+        recommendation,
+        period,
+        reasons: aiReasons.slice(0, 4),
+        source: 'ai',
+        probability
+      }
+    }
+    
+    // 🔄 AI 리포트 없으면 Fallback: 지표 기반 계산
+    devLog('⚠️ AI 리포트 없음, 지표 기반 계산 사용')
+    
     const regime = calculateSignalRegime()
     const strength = calculateMarketStrength()
     
@@ -1057,18 +1240,12 @@ export default function SymbolDetailPage() {
       : { strong: 60, buy: 45, neutral: 35, caution: 20 }
     
     // 변동성 기반 동적 임계값 조정
-    const volatility = marketStrength.volatility // '높음', '중간', '낮음'
-    const volatilityAdjustment = volatility === '높음' 
-      ? 5   // 변동성 높으면 더 보수적 (임계값 상향)
-      : volatility === '낮음' 
-      ? -5  // 변동성 낮으면 더 공격적 (임계값 하향)
-      : 0   // 중간이면 기본값 유지
+    const volatility = strength.volatility
+    const volatilityAdjustment = volatility === '높음' ? 5 : volatility === '낮음' ? -5 : 0
     
-    // 신호 일치도 기반 조정 (일치도가 낮으면 더 보수적)
-    const signalAgreement = signalRegime.bullishPercentage || 50
-    const signalAdjustment = signalAgreement < 40 || signalAgreement > 60 
-      ? 0   // 신호가 명확하면 조정 없음
-      : 3   // 신호가 불명확하면 보수적 (임계값 상향)
+    // 신호 일치도 기반 조정
+    const signalAgreement = regime.bullishPercentage || 50
+    const signalAdjustment = signalAgreement < 40 || signalAgreement > 60 ? 0 : 3
     
     // 최종 임계값 계산
     const thresholds = {
@@ -1077,16 +1254,6 @@ export default function SymbolDetailPage() {
       neutral: baseThresholds.neutral + Math.floor(signalAdjustment / 2),
       caution: baseThresholds.caution
     }
-    
-    // 디버그 로그 (개발 환경에서만)
-    devLog('📊 동적 임계값 계산:', {
-      기본임계값: baseThresholds,
-      변동성: volatility,
-      변동성조정: volatilityAdjustment,
-      신호일치도: `${signalAgreement}%`,
-      신호조정: signalAdjustment,
-      최종임계값: thresholds
-    })
     
     if (totalScore >= thresholds.strong) {
       action = '강력 매수'
@@ -1153,7 +1320,9 @@ export default function SymbolDetailPage() {
       riskLevel,
       recommendation,
       period,
-      reasons: reasons.slice(0, 4)
+      reasons: reasons.slice(0, 4),
+      source: 'calculated',
+      totalScore
     }
   }
 
@@ -1532,33 +1701,34 @@ export default function SymbolDetailPage() {
           </div>
         </div>
 
-        {/* AI 종합 판단 */}
-        <div 
-          className="glass-panel rounded-lg p-3 sm:p-4 lg:p-6 border-l-4"
-          style={{ borderLeftColor: aiConclusion.actionColor }}
-        >
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4">
-            {/* AI 판단 */}
-            <div className="lg:col-span-1">
-              <p className="text-xs sm:text-sm text-[#CFCFCF] mb-1">AI 종합 판단</p>
-              <p className="text-xl sm:text-2xl font-bold mb-2" style={{ color: aiConclusion.actionColor }}>
-                {aiConclusion.action}
-              </p>
-              <div className="flex items-center gap-1.5 text-xs sm:text-sm">
-                <span className="text-[#CFCFCF]">신뢰도</span>
-                {confidenceMetrics.confidence !== null ? (
-                  <>
-                <span className="text-white font-semibold">{confidenceMetrics.confidence}%</span>
-                <span className="text-[#CFCFCF]">
-                      {confidenceMetrics.confidence >= 80 ? '높음' : 
-                       confidenceMetrics.confidence >= 60 ? '보통' : '낮음'}
-                </span>
-                  </>
-                ) : (
-                  <span className="text-[#CFCFCF]">데이터 없음</span>
-                )}
+        {/* AI 종합 판단 - AI 리포트 있을 때만 표시 */}
+        {aiReport ? (
+          <div 
+            className="glass-panel rounded-lg p-3 sm:p-4 lg:p-6 border-l-4"
+            style={{ borderLeftColor: aiConclusion.actionColor }}
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4">
+              {/* AI 판단 */}
+              <div className="lg:col-span-1">
+                <p className="text-xs sm:text-sm text-[#CFCFCF] mb-1">AI 종합 판단</p>
+                <p className="text-xl sm:text-2xl font-bold mb-2" style={{ color: aiConclusion.actionColor }}>
+                  {aiConclusion.action}
+                </p>
+                <div className="flex items-center gap-1.5 text-xs sm:text-sm">
+                  <span className="text-[#CFCFCF]">AI 신뢰도</span>
+                  {aiReport.metadata?.confidence ? (
+                    <>
+                      <span className="text-white font-semibold">{Math.round(aiReport.metadata.confidence * 100)}%</span>
+                      <span className="text-[#CFCFCF]">
+                        {aiReport.metadata.confidence >= 0.8 ? '높음' : 
+                         aiReport.metadata.confidence >= 0.6 ? '보통' : '낮음'}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-[#CFCFCF]">분석 완료</span>
+                  )}
+                </div>
               </div>
-            </div>
 
             {/* 핵심 정보 */}
             <div className="lg:col-span-2 grid grid-cols-3 gap-2 sm:gap-3">
@@ -1595,30 +1765,68 @@ export default function SymbolDetailPage() {
               </div>
             </div>
 
-            {/* 추천 행동 */}
-            <div className="lg:col-span-1 bg-[rgba(255,255,255,0.03)] rounded-lg p-2.5 sm:p-3">
-              <p className="text-[10px] sm:text-xs text-[#CFCFCF] mb-1">추천</p>
-              <p className="text-xs sm:text-sm text-white font-medium leading-relaxed">{aiConclusion.recommendation}</p>
-            </div>
-          </div>
-
-          {/* 판단 근거 */}
-          {aiConclusion.reasons.length > 0 && (
-            <div className="mt-3 sm:mt-4 pt-3 border-t border-[rgba(255,255,255,0.05)]">
-              <p className="text-[10px] sm:text-xs text-[#CFCFCF] mb-2">판단 근거</p>
-              <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                {aiConclusion.reasons.map((reason, idx) => (
-                  <span 
-                    key={idx}
-                    className="text-[10px] sm:text-xs bg-[rgba(255,255,255,0.05)] text-[#CFCFCF] px-2 py-1 rounded border border-[rgba(255,255,255,0.05)]"
-                  >
-                    {reason}
-                  </span>
-                ))}
+              {/* 추천 행동 */}
+              <div className="lg:col-span-1 bg-[rgba(255,255,255,0.03)] rounded-lg p-2.5 sm:p-3">
+                <p className="text-[10px] sm:text-xs text-[#CFCFCF] mb-1">추천</p>
+                <p className="text-xs sm:text-sm text-white font-medium leading-relaxed">{aiConclusion.recommendation}</p>
               </div>
             </div>
-          )}
-        </div>
+
+            {/* 판단 근거 */}
+            {aiConclusion.reasons.length > 0 && (
+              <div className="mt-3 sm:mt-4 pt-3 border-t border-[rgba(255,255,255,0.05)]">
+                <p className="text-[10px] sm:text-xs text-[#CFCFCF] mb-2">판단 근거</p>
+                <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                  {aiConclusion.reasons.map((reason: string, idx: number) => (
+                    <span 
+                      key={idx}
+                      className="text-[10px] sm:text-xs bg-[rgba(255,255,255,0.05)] text-[#CFCFCF] px-2 py-1 rounded border border-[rgba(255,255,255,0.05)]"
+                    >
+                      {reason}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* AI 분석 필요 안내 */
+          <div className="glass-panel rounded-lg p-4 sm:p-6 border-l-4 border-[#8b95a5]">
+            <div className="flex flex-col items-center justify-center text-center py-6">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#00E5A8]/20 to-[#00D1FF]/20 flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-[#00E5A8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              </div>
+              <h3 className="text-lg sm:text-xl font-bold text-white mb-2">AI 종합 분석 필요</h3>
+              <p className="text-sm text-[#CFCFCF] mb-4 max-w-md">
+                GPT-4 기반 AI 분석을 생성하면 종합 판단, 신뢰도, 투자 전략을 확인할 수 있습니다.
+              </p>
+              <button
+                onClick={generateAiReport}
+                disabled={generatingReport}
+                className="px-6 py-2.5 bg-gradient-to-r from-[#00E5A8] to-[#00D1FF] hover:from-[#00cc96] hover:to-[#00b8e6] text-dark-100 font-bold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {generatingReport ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    분석 중...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    AI 분석 생성
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 지연 시세 안내 문구 */}
         <div className="glass-panel rounded-lg p-2.5 sm:p-3 bg-gradient-to-r from-[rgba(0,229,168,0.05)] to-[rgba(0,209,255,0.05)] border border-[rgba(0,229,168,0.2)]">
@@ -2321,7 +2529,7 @@ export default function SymbolDetailPage() {
                   </div>
 
                   {/* AI 기반 스윙 전략 템플릿 */}
-                  {(aiConclusion.action === '강력 매수' || aiConclusion.action === '매수') ? (() => {
+                  {(aiConclusion.action === '강력 매수' || aiConclusion.action === '매수' || aiConclusion.action === '관망') ? (() => {
                     const strategy = generateSwingStrategy()
                     if (!strategy) return null
                     
@@ -2460,22 +2668,22 @@ export default function SymbolDetailPage() {
                         </div>
                     )
                   })() : (
-                    // 매수/강력 매수가 아닐 때 안내 메시지
+                    // 주의/매도일 때 안내 메시지
                     <div className="mt-4 pt-4 border-t border-[#2a3142]">
                       <div className="bg-[#141821] border border-[#2a3142] rounded-lg p-4">
                         <div className="flex items-start gap-3">
                           <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-[#2a3142] flex items-center justify-center">
-                            <svg className="w-4 h-4 text-[#8b95a5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            <svg className="w-4 h-4 text-[#ff4d4d]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                             </svg>
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-[#a0aec0] mb-1">스윙 전략 미제공</p>
+                            <p className="text-sm font-medium text-[#ff4d4d] mb-1">진입 전략 비권장</p>
                             <p className="text-xs text-[#8b95a5] leading-relaxed">
-                              현재 AI 판단이 <span className="text-[#f59e0b] font-medium">&ldquo;{aiConclusion.action}&rdquo;</span>이므로 
-                              적극적인 진입 전략을 제시하지 않습니다.
+                              현재 AI 판단이 <span className="text-[#ff4d4d] font-medium">&ldquo;{aiConclusion.action}&rdquo;</span>이므로 
+                              신규 진입을 권장하지 않습니다.
                               <br />
-                              <span className="text-[#a0aec0]">매수 신호가 발생하면 상세 스윙 전략이 표시됩니다.</span>
+                              <span className="text-[#a0aec0]">보유 중이라면 청산 또는 손절 검토를 권장합니다.</span>
                             </p>
                           </div>
                         </div>
@@ -2718,12 +2926,16 @@ export default function SymbolDetailPage() {
               </div>
             </div>
 
-            {/* 3. AI 신뢰도 분석 (Area Chart + Table) */}
+            {/* 3. 기술적 분석 점수 (AI 없을 때) / AI 신뢰도 (AI 있을 때) */}
             <div className="glass-panel rounded-lg p-3 sm:p-4">
               <div className="mb-2">
-                <h3 className="text-sm sm:text-base font-bold text-white">AI 신뢰도</h3>
+                <h3 className="text-sm sm:text-base font-bold text-white">
+                  {aiReport ? 'AI 신뢰도' : '기술적 분석 점수'}
+                </h3>
               </div>
-              <div className="text-xs sm:text-sm text-[#CFCFCF] mb-3 font-semibold">신뢰도 분석</div>
+              <div className="text-xs sm:text-sm text-[#CFCFCF] mb-3 font-semibold">
+                {aiReport ? 'GPT-4 기반 신뢰도' : 'RSI·MACD·이평선 기반'}
+              </div>
 
               {/* Area Chart */}
               <div className="mb-4">
@@ -2769,7 +2981,9 @@ export default function SymbolDetailPage() {
                     <span className="text-[#CFCFCF] font-semibold text-right">수치</span>
                 </div>
                   <div className="grid grid-cols-2 gap-3 py-1 border-b border-[rgba(255,255,255,0.03)]">
-                  <span className="text-[#CFCFCF] font-light text-left">신뢰도</span>
+                    <span className="text-[#CFCFCF] font-light text-left">
+                      {aiReport ? 'AI 신뢰도' : '기술 점수'}
+                    </span>
                     <span className="text-[#00E5A8] text-right font-semibold text-lg tabular-nums">
                       {confidenceMetrics.confidence !== null ? `${confidenceMetrics.confidence}%` : '데이터 없음'}
                     </span>

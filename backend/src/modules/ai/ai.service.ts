@@ -136,6 +136,89 @@ export class AiService {
         metadata.tokensUsed = completion.usage?.total_tokens || 0;
         metadata.processingTimeMs = Date.now() - startTime;
 
+        // 🆕 AI 신뢰도 계산 (대형 플랫폼 방식: 백테스팅 기반)
+        let confidenceScore = 0.5; // 기본 50%
+        
+        // ⭐ 1. 과거 예측 정확도 (최대 +30%, 가장 중요!)
+        // Bloomberg/TradingView 방식: 실제 성과 기반
+        if (historicalContext && historicalContext.totalCases >= 5) {
+          const historicalAccuracy = historicalContext.successRate / 100;
+          confidenceScore += historicalAccuracy * 0.3; // 성공률 70% → +21%
+          
+          // 샘플 수가 많을수록 신뢰도 증가
+          if (historicalContext.totalCases >= 20) {
+            confidenceScore += 0.05; // 충분한 샘플
+          }
+        }
+        
+        // 2. 데이터 품질 (최대 +15%)
+        if (candles.length >= 100) {
+          confidenceScore += 0.15;
+        } else if (candles.length >= 50) {
+          confidenceScore += 0.08;
+        }
+        
+        // 3. 지표 일치도 (최대 +15%)
+        // Google Gemini 방식: 여러 신호의 합의
+        if (latestIndicator) {
+          let agreementCount = 0;
+          let totalSignals = 0;
+          
+          // RSI 신호
+          if (latestIndicator.rsi) {
+            totalSignals++;
+            if (latestIndicator.rsi > 70 || latestIndicator.rsi < 30) {
+              agreementCount++; // 명확한 신호
+            }
+          }
+          
+          // MACD 신호
+          if (latestIndicator.macd !== undefined && latestIndicator.macdSignal !== undefined) {
+            totalSignals++;
+            if (Math.abs(latestIndicator.macd - latestIndicator.macdSignal) > 50) {
+              agreementCount++; // 명확한 크로스오버
+            }
+          }
+          
+          // 이평선 배열
+          if (latestIndicator.ma5 && latestIndicator.ma20 && latestIndicator.ma60) {
+            totalSignals++;
+            const isAligned = (latestIndicator.ma5 > latestIndicator.ma20 && latestIndicator.ma20 > latestIndicator.ma60) ||
+                             (latestIndicator.ma5 < latestIndicator.ma20 && latestIndicator.ma20 < latestIndicator.ma60);
+            if (isAligned) {
+              agreementCount++; // 정배열 또는 역배열
+            }
+          }
+          
+          if (totalSignals > 0) {
+            confidenceScore += (agreementCount / totalSignals) * 0.15;
+          }
+        }
+        
+        // 4. 시장 상황 적합성 (최대 +10%)
+        // 거래량 확인 (TradingView 방식)
+        if (latestIndicator?.volumeRatio) {
+          if (latestIndicator.volumeRatio > 1.5) {
+            confidenceScore += 0.1; // 거래량 급증 (신뢰도 높음)
+          } else if (latestIndicator.volumeRatio > 1.0) {
+            confidenceScore += 0.05; // 거래량 증가
+          }
+        }
+        
+        // 5. 변동성 패널티 (최대 -15%)
+        // 변동성 높으면 예측 어려움
+        if (latestIndicator?.bbUpper && latestIndicator?.bbLower && latestCandle) {
+          const bbWidth = (latestIndicator.bbUpper - latestIndicator.bbLower) / latestCandle.close;
+          if (bbWidth > 0.15) {
+            confidenceScore -= 0.15; // 매우 높은 변동성
+          } else if (bbWidth > 0.1) {
+            confidenceScore -= 0.1; // 높은 변동성
+          }
+        }
+        
+        // 최종 신뢰도 (35~95% 범위)
+        metadata.confidence = Math.min(0.95, Math.max(0.35, confidenceScore));
+
         // 가중치 계산
         explainability.factors = this.calculateFactorWeights(latestIndicator, candles);
         explainability.reasoning = this.generateReasoning(latestIndicator, candles);
@@ -367,6 +450,24 @@ ${historicalContext.insight}
 
 분석 기준 규칙은 다음을 따르십시오:
 
+📌 추세 판단 기준 (최우선):
+현재 상황:
+- 현재가: ${currentPrice.toLocaleString()}원
+- MA20: ${ma20.toFixed(0)}원
+- MA60: ${ma60.toFixed(0)}원
+- MACD: ${latestIndicator.macd ? latestIndicator.macd.toFixed(2) : 'N/A'}
+- Signal: ${latestIndicator.macdSignal ? latestIndicator.macdSignal.toFixed(2) : 'N/A'}
+
+⚠️ 추세 판단 규칙 (반드시 준수):
+1. 현재가(${currentPrice}) > MA20(${ma20.toFixed(0)}) AND MA20 > MA60 → "상승 추세"
+2. 현재가(${currentPrice}) < MA20(${ma20.toFixed(0)}) AND MA20 < MA60 → "하락 추세"
+3. 그 외 → "횡보"
+
+현재 실제 판단:
+- 현재가 ${currentPrice > ma20 ? '>' : '<'} MA20: ${currentPrice > ma20 ? '상승 신호' : '하락 신호'}
+- MA20 ${ma20 > ma60 ? '>' : '<'} MA60: ${ma20 > ma60 ? '정배열' : '역배열'}
+→ 따라서 추세는 "${currentPrice > ma20 && ma20 > ma60 ? '상승' : currentPrice < ma20 && ma20 < ma60 ? '하락' : '횡보'}"입니다.
+
 📌 RSI 해석 기준:
 - 30 이하: 강한 매수 신호
 - 30~45: 매수 우위
@@ -379,11 +480,6 @@ ${historicalContext.insight}
 - Signal 하향돌파: 매도 신호
 - Histogram 증가: 상승 모멘텀 강화
 - Histogram 감소: 전환 가능성
-
-📌 이평선 판단 기준:
-- 가격 > MA20 & MA20 > MA60 → 상승 추세
-- MA20 횡보 → 관망
-- 가격 < MA20 < MA60 → 하락 추세
 
 📌 상승 확률 산출 방식:
 - RSI: 30%
@@ -411,7 +507,9 @@ ${historicalContext.insight}
 아래 형식으로 정확히 출력하세요:
 
 1. 시장 포지션
-현재 추세는 [상승/하락/횡보]이며, 강도는 [약함/중간/강함]. [지표 근거 포함해 1~2문장]
+⚠️ 위에서 계산한 추세를 그대로 사용하세요!
+현재 추세는 [위에서 계산한 추세: 상승/하락/횡보]이며, 강도는 [약함/중간/강함]. 
+현재가는 MA20 ${currentPrice > ma20 ? '상회' : '하회'}, MACD는 Signal ${latestIndicator.macd && latestIndicator.macdSignal && latestIndicator.macd > latestIndicator.macdSignal ? '상향돌파' : '하향돌파'} 상태입니다.
 
 2. 핵심 매매 시그널
 - RSI: [수치 및 판단]
