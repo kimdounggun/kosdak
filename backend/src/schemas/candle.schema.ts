@@ -51,3 +51,5 @@ CandleSchema.index({ timestamp: -1 });
 
 
 
+
+
