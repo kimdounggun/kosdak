@@ -96,93 +96,81 @@ const highlightContent = (content: string): JSX.Element => {
 export default function AiReportViewer({ report }: AiReportViewerProps) {
     if (!report) return null
 
-    // 텍스트 파싱: 번호 매기기 패턴(1., 2. 등)으로 분리
+    // 텍스트 파싱: 섹션을 순서대로 찾기 (현재는 1~4번 섹션)
     const parseReport = (text: string) => {
-        const lines = text.split('\n').filter(line => line.trim() !== '')
         const sections: { title: string; content: string; icon: any }[] = []
-        let currentSection = { title: '', content: '', icon: Info }
-
-        lines.forEach(line => {
-            // 더 유연한 패턴 매칭: "1. 제목: 내용" 또는 "1. 제목" 또는 "제목:" 형식
-            const match1 = line.match(/^(\d+)\.\s*(.*?)(?::|：)\s*(.*)/)
-            const match2 = line.match(/^(\d+)\.\s*(.*?)$/)
-            const match3 = line.match(/^(.*?)(?::|：)\s*(.*)/)
+        
+        // 1. 먼저 전체 텍스트에서 구분선 제거
+        const cleanText = text.replace(/[━─=\-]{10,}/g, '').trim()
+        
+        // 2. 줄 단위로 분할
+        const lines = cleanText.split('\n')
+        
+        // 섹션 번호를 순서대로 찾기 (1번부터 시작, 최대 10번까지)
+        for (let i = 1; i <= 10; i++) {
+            // "1. ", "2. " 등을 찾되, 앞뒤 공백 무시
+            const headerPattern = new RegExp(`^\\s*${i}\\.\\s+(.+)$`)
             
-            let match = match1 || match2 || match3
+            let startLine = -1
             let title = ''
-            let content = ''
-
-            if (match) {
-                if (match1) {
-                    // "1. 제목: 내용" 형식
-                    title = match[2].trim()
-                    content = match[3] ? match[3].trim() : ''
-                } else if (match2) {
-                    // "1. 제목" 형식
-                    title = match[2].trim()
-                    content = ''
-                } else if (match3) {
-                    // "제목: 내용" 형식
-                    title = match[1].trim()
-                    content = match[2] ? match[2].trim() : ''
-                }
-
-                // 제목이 있고, 섹션 키워드를 포함하는 경우에만 새 섹션으로 처리
-                if (title && (
-                    title.includes('추세') || title.includes('강도') || 
-                    title.includes('변동성') || 
-                    title.includes('수급') || title.includes('거래량') ||
-                    title.includes('지지') || title.includes('저항') ||
-                    title.includes('전망') || title.includes('요약') ||
-                    title.includes('리스크') || title.includes('주의') ||
-                    /^\d+\./.test(line) // 번호로 시작하는 경우
-                )) {
-                    if (currentSection.title) {
-                        sections.push(currentSection)
-                    }
-
-                    // 키워드 기반 아이콘 매핑
-                    let icon = Info
-                    if (title.includes('추세') || title.includes('강도')) icon = TrendingUp
-                    else if (title.includes('변동성')) icon = Activity
-                    else if (title.includes('수급') || title.includes('거래량')) icon = BarChart2
-                    else if (title.includes('지지') || title.includes('저항')) icon = Target
-                    else if (title.includes('전망') || title.includes('요약')) icon = CheckCircle2
-                    else if (title.includes('리스크') || title.includes('주의')) icon = AlertTriangle
-
-                    currentSection = { title, content, icon }
-                } else {
-                    // 섹션 제목이 아니면 내용에 추가
-                    if (currentSection.title) {
-                        currentSection.content += (currentSection.content ? ' ' : '') + line.trim()
-                    } else {
-                        currentSection.content += (currentSection.content ? ' ' : '') + line.trim()
-                    }
-                }
-            } else {
-                // 매칭되지 않으면 현재 섹션의 내용에 추가
-                if (currentSection.title) {
-                    currentSection.content += (currentSection.content ? ' ' : '') + line.trim()
-                } else {
-                    // 섹션이 없으면 첫 줄을 제목으로 처리
-                    if (line.trim().length > 0 && sections.length === 0) {
-                        currentSection = { title: '시장 요약', content: line.trim(), icon: Info }
-                    } else if (line.trim().length > 0) {
-                        currentSection.content += (currentSection.content ? ' ' : '') + line.trim()
-                    }
+            
+            // 해당 번호의 섹션 찾기
+            for (let j = 0; j < lines.length; j++) {
+                const match = lines[j].match(headerPattern)
+                if (match) {
+                    startLine = j
+                    // 이모지 및 특수문자 제거하여 제목만 추출
+                    title = match[1]
+                        .replace(/[\u{1F000}-\u{1FFFF}\u2600-\u27BF\uFE0F]/gu, '') // 이모지 제거
+                        .replace(/🎯|📊|⚠️|💡|🔹|✅|❌|📌|📍/g, '') // 추가 이모지 제거
+                        .trim()
+                    break
                 }
             }
-        })
-
-        if (currentSection.title) {
-            sections.push(currentSection)
+            
+            if (startLine >= 0) {
+                // 다음 섹션까지의 내용 추출
+                let endLine = lines.length
+                for (let j = startLine + 1; j < lines.length; j++) {
+                    // 다음 숫자 섹션 헤더를 찾으면 종료
+                    if (/^\s*\d+\.\s+/.test(lines[j])) {
+                        endLine = j
+                        break
+                    }
+                }
+                
+                // 섹션 내용 추출 (빈 줄 제거하지 않고 유지)
+                const content = lines.slice(startLine + 1, endLine)
+                    .join('\n')
+                    .trim()
+                
+                // 아이콘 매핑
+                let icon = Info
+                if (title.includes('추세') || title.includes('강도') || title.includes('시장') || title.includes('포지션')) {
+                    icon = TrendingUp
+                } else if (title.includes('변동성')) {
+                    icon = Activity
+                } else if (title.includes('수급') || title.includes('거래량') || title.includes('시그널') || title.includes('매매')) {
+                    icon = BarChart2
+                } else if (title.includes('지지') || title.includes('저항') || title.includes('투자') || title.includes('전략')) {
+                    icon = Target
+                } else if (title.includes('전망') || title.includes('요약')) {
+                    icon = CheckCircle2
+                } else if (title.includes('리스크') || title.includes('주의')) {
+                    icon = AlertTriangle
+                }
+                
+                if (content) {
+                    sections.push({ title, content, icon })
+                }
+            }
         }
-
+        
         // 섹션이 하나도 없으면 전체 텍스트를 하나의 섹션으로 처리
-        if (sections.length === 0 && text.trim()) {
-            return [{ title: '시장 요약', content: text.trim(), icon: Info }]
+        if (sections.length === 0 && cleanText.trim()) {
+            return [{ title: '시장 요약', content: cleanText.trim(), icon: Info }]
         }
-
+        
         return sections
     }
 

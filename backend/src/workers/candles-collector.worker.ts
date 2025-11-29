@@ -58,12 +58,135 @@ export class CandlesCollectorWorker implements OnModuleInit {
       
       this.logger.debug(`Fetching data for ${yahooTicker}`);
 
-      // Yahoo Finance Query API 직접 호출 (5분봉)
+      // 🆕 다양한 timeframe의 데이터 수집
+      await this.collectTimeframeData(symbol, yahooTicker, '5m', '1d', 100);   // 5분봉 (1일치)
+      await this.collectTimeframeData(symbol, yahooTicker, '1h', '1mo', 200);  // 1시간봉 (1개월치)
+      await this.collectTimeframeData(symbol, yahooTicker, '1d', '3mo', 200);  // 일봉 (3개월치)
+      await this.collectTimeframeData(symbol, yahooTicker, '1wk', '1y', 100);  // 주봉 (1년치)
+
+      // Symbol 시세 정보 업데이트 (5분봉 데이터 기반)
+      await this.updateSymbolMarketData(symbol, yahooTicker);
+
+    } catch (error) {
+      this.logger.error(
+        `Error fetching data for ${symbol.code}: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * 특정 timeframe의 캔들 데이터 수집
+   */
+  private async collectTimeframeData(
+    symbol: any,
+    yahooTicker: string,
+    yahooInterval: string,
+    range: string,
+    limit: number,
+  ) {
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooTicker}`;
+      const response = await axios.get(url, {
+        params: {
+          interval: yahooInterval,
+          range: range,
+        },
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+        timeout: 10000,
+      });
+
+      const result = response.data?.chart?.result?.[0];
+      if (!result || !result.timestamp) {
+        this.logger.warn(`No ${yahooInterval} data received for ${yahooTicker}`);
+        return;
+      }
+
+      const timestamps = result.timestamp;
+      const quote = result.indicators?.quote?.[0];
+
+      if (!timestamps || !quote || timestamps.length === 0) {
+        return;
+      }
+
+      // Timeframe 매핑 (Yahoo -> 시스템)
+      const timeframeMap: Record<string, string> = {
+        '5m': '5m',
+        '1h': '1h',
+        '1d': '1d',
+        '1wk': '1w',
+      };
+      const timeframe = timeframeMap[yahooInterval] || yahooInterval;
+
+      // 최근 N개 캔들만 저장
+      const candlesToSave = Math.min(timestamps.length, limit);
+      let savedCount = 0;
+
+      for (let i = timestamps.length - candlesToSave; i < timestamps.length; i++) {
+        const ts = timestamps[i];
+        const open = quote.open?.[i];
+        const high = quote.high?.[i];
+        const low = quote.low?.[i];
+        const close = quote.close?.[i];
+        const volume = quote.volume?.[i];
+
+        if (ts && close !== null && close !== undefined) {
+          const rawTimestamp = new Date(ts * 1000);
+          const normalizedTimestamp = new Date(rawTimestamp);
+          normalizedTimestamp.setSeconds(0, 0);
+
+          const candleData = {
+            symbolId: symbol._id,
+            timeframe: timeframe,
+            timestamp: normalizedTimestamp,
+            open: open !== null && open !== undefined ? open : close,
+            high: high !== null && high !== undefined ? high : close,
+            low: low !== null && low !== undefined ? low : close,
+            close: close,
+            volume: volume !== null && volume !== undefined ? volume : 0,
+            sourceUpdatedAt: new Date(),
+            isDelayed: true,
+            delayMinutes: 20,
+          };
+
+          await this.candlesService.upsertCandle(candleData);
+          savedCount++;
+        }
+      }
+
+      this.logger.log(
+        `✅ ${symbol.name} ${timeframe} 캔들 ${savedCount}개 저장`,
+      );
+
+      // 지표 계산 및 캐시
+      try {
+        await this.indicatorsService.calculateAndCache(
+          symbol._id.toString(),
+          timeframe,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Error calculating ${timeframe} indicators for ${symbol.code}: ${error.message}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to fetch ${yahooInterval} data for ${yahooTicker}: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Symbol의 시세 정보 업데이트 (5분봉 기반)
+   */
+  private async updateSymbolMarketData(symbol: any, yahooTicker: string) {
+    try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooTicker}`;
       const response = await axios.get(url, {
         params: {
           interval: '5m',
-          range: '1d', // 1일치 (안정적)
+          range: '1d',
         },
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -73,13 +196,13 @@ export class CandlesCollectorWorker implements OnModuleInit {
 
       const result = response.data?.chart?.result?.[0];
       if (!result || !result.meta || !result.meta.regularMarketPrice) {
-        this.logger.warn(`No data received for ${yahooTicker}`);
+        this.logger.warn(`No market data received for ${yahooTicker}`);
         return;
       }
 
       const meta = result.meta;
 
-      // 일봉 데이터 가져오기 (당일 시가를 위해)
+      // 일봉 데이터에서 당일 시가 가져오기
       let dayOpen = meta.regularMarketOpen;
       try {
         const dailyResponse = await axios.get(url, {
@@ -92,26 +215,24 @@ export class CandlesCollectorWorker implements OnModuleInit {
           },
           timeout: 10000,
         });
-        
+
         const dailyResult = dailyResponse.data?.chart?.result?.[0];
         if (dailyResult?.indicators?.quote?.[0]?.open) {
           const dailyQuote = dailyResult.indicators.quote[0];
-          // 마지막(오늘) 캔들의 시가
           dayOpen = dailyQuote.open[dailyQuote.open.length - 1];
         }
       } catch (error) {
-        this.logger.warn(`Failed to fetch daily data for ${yahooTicker}: ${error.message}`);
+        this.logger.warn(`Failed to fetch daily open for ${yahooTicker}: ${error.message}`);
       }
-      
-      // 로고 URL 가져오기
-      // 잘못된 URL 패턴 체크 (C200x200 또는 img1.daumcdn.net/thumb 포함)
+
+      // 로고 URL 정리
       const hasInvalidUrl = symbol.logoUrl && (
-        symbol.logoUrl.includes('C200x200') || 
+        symbol.logoUrl.includes('C200x200') ||
         symbol.logoUrl.includes('img1.daumcdn.net/thumb') ||
         symbol.logoUrl.includes('finance/company') ||
         symbol.logoUrl.includes('finance/logo')
       );
-      
+
       if (hasInvalidUrl) {
         try {
           await this.symbolsService.updateLogoUrl(symbol._id.toString(), null);
@@ -121,10 +242,10 @@ export class CandlesCollectorWorker implements OnModuleInit {
         }
       }
 
-      // ✨ Symbol에 당일 시세 정보 업데이트 (고가/저가/시가 포함)
+      // 시세 정보 업데이트
       const priceChange = meta.regularMarketPrice - (meta.chartPreviousClose || meta.previousClose || meta.regularMarketPrice);
-      const priceChangePercent = meta.chartPreviousClose 
-        ? ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose * 100) 
+      const priceChangePercent = meta.chartPreviousClose
+        ? ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose * 100)
         : 0;
 
       await this.symbolsService.updateMarketData(symbol._id.toString(), {
@@ -139,127 +260,9 @@ export class CandlesCollectorWorker implements OnModuleInit {
         lastUpdated: new Date(),
       });
 
-      this.logger.log(`📈 ${symbol.name} 시세 업데이트: 시가 ${dayOpen?.toLocaleString()}원, 현재 ${meta.regularMarketPrice?.toLocaleString()}원, 고가 ${meta.regularMarketDayHigh?.toLocaleString()}원, 저가 ${meta.regularMarketDayLow?.toLocaleString()}원`);
-
-      // 실제 5분봉 시계열 데이터 파싱
-      const timestamps = result.timestamp;
-      const quote = result.indicators?.quote?.[0];
-      
-      // 🔍 디버깅: 전체 캔들 중 처음으로 정상적인 OHLC를 가진 캔들 찾기
-      if (timestamps && quote && timestamps.length > 0) {
-        this.logger.log(`📊 ${symbol.name} - 총 ${timestamps.length}개 캔들 수신`);
-        
-        // 최신 5개 캔들 확인
-        this.logger.log(`  최신 5개 캔들 OHLC:`);
-        for (let i = Math.max(0, timestamps.length - 5); i < timestamps.length; i++) {
-          this.logger.log(`  [${i}] O:${quote.open?.[i]} H:${quote.high?.[i]} L:${quote.low?.[i]} C:${quote.close?.[i]} V:${quote.volume?.[i]}`);
-        }
-        
-        // 첫 정상 캔들 찾기 (OHLC가 다른 첫 번째 캔들)
-        let firstValidIdx = -1;
-        for (let i = timestamps.length - 1; i >= 0; i--) {
-          const o = quote.open?.[i];
-          const h = quote.high?.[i];
-          const l = quote.low?.[i];
-          const c = quote.close?.[i];
-          if (o !== null && h !== null && l !== null && c !== null && !(o === c && h === c && l === c)) {
-            firstValidIdx = i;
-            break;
-          }
-        }
-        
-        if (firstValidIdx >= 0) {
-          this.logger.log(`  ✅ 첫 정상 캔들: [${firstValidIdx}] O:${quote.open?.[firstValidIdx]} H:${quote.high?.[firstValidIdx]} L:${quote.low?.[firstValidIdx]} C:${quote.close?.[firstValidIdx]}`);
-        } else {
-          this.logger.log(`  ❌ 정상 캔들 없음 (모두 null 또는 OHLC 동일)`);
-        }
-      }
-      
-      if (timestamps && quote && timestamps.length > 0) {
-        // 실제 5분봉 데이터 저장 (최근 100개만)
-        const candlesToSave = Math.min(timestamps.length, 100);
-        let savedCount = 0;
-        
-        for (let i = timestamps.length - candlesToSave; i < timestamps.length; i++) {
-          const ts = timestamps[i];
-          const open = quote.open?.[i];
-          const high = quote.high?.[i];
-          const low = quote.low?.[i];
-          const close = quote.close?.[i];
-          const volume = quote.volume?.[i];
-          
-          // null 값이 아닌 경우에만 저장
-          if (ts && close !== null && close !== undefined) {
-            // timestamp 정규화 (초, 밀리초 제거 → 5분 단위로 정렬)
-            const rawTimestamp = new Date(ts * 1000);
-            const normalizedTimestamp = new Date(rawTimestamp);
-            normalizedTimestamp.setSeconds(0, 0); // 초와 밀리초를 0으로 설정
-            
-            const candleData = {
-              symbolId: symbol._id,
-              timeframe: '5m',
-              timestamp: normalizedTimestamp,
-              open: open !== null && open !== undefined ? open : close,
-              high: high !== null && high !== undefined ? high : close,
-              low: low !== null && low !== undefined ? low : close,
-              close: close,
-              volume: volume !== null && volume !== undefined ? volume : 0,
-              sourceUpdatedAt: new Date(),
-              isDelayed: true,
-              delayMinutes: 20,
-            };
-
-            await this.candlesService.upsertCandle(candleData);
-            savedCount++;
-          }
-        }
-        
-        this.logger.log(
-          `✅ Updated ${symbol.name} (${yahooTicker}): ${savedCount} candles saved, latest: ${meta.regularMarketPrice?.toLocaleString()}원`,
-        );
-      } else {
-        // Fallback: meta 정보만 있는 경우 현재가로 단일 캔들 저장
-        const price = meta.regularMarketPrice;
-        
-        // timestamp 정규화 (초, 밀리초 제거)
-        const now = new Date();
-        now.setSeconds(0, 0);
-        
-        const candleData = {
-          symbolId: symbol._id,
-          timeframe: '5m',
-          timestamp: now,
-          open: meta.regularMarketOpen !== null && meta.regularMarketOpen !== undefined ? meta.regularMarketOpen : price,
-          high: meta.regularMarketDayHigh !== null && meta.regularMarketDayHigh !== undefined ? meta.regularMarketDayHigh : price,
-          low: meta.regularMarketDayLow !== null && meta.regularMarketDayLow !== undefined ? meta.regularMarketDayLow : price,
-          close: price,
-          volume: meta.regularMarketVolume || 0,
-          sourceUpdatedAt: new Date(),
-          isDelayed: true,
-          delayMinutes: 20,
-        };
-
-        await this.candlesService.upsertCandle(candleData);
-        this.logger.log(
-          `✅ Updated ${symbol.name} (${yahooTicker}) [meta only]: ${price.toLocaleString()}원`,
-        );
-      }
-
-      // Calculate and cache indicators
-      try {
-        await this.indicatorsService.calculateAndCache(
-          symbol._id.toString(),
-          '5m',
-        );
-      } catch (error) {
-        this.logger.error(
-          `Error calculating indicators for ${symbol.code}: ${error.message}`,
-        );
-      }
+      this.logger.log(`📈 ${symbol.name} 시세 업데이트: ${meta.regularMarketPrice?.toLocaleString()}원`);
     } catch (error) {
-      this.logger.error(
-        `Error fetching data for ${symbol.code}: ${error.message}`,
-      );
+      this.logger.warn(`Failed to update market data for ${yahooTicker}: ${error.message}`);
     }
   }
 

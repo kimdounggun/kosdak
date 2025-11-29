@@ -37,3 +37,4 @@ UserSymbolSchema.index({ userId: 1, symbolId: 1 }, { unique: true });
 
 
 
+

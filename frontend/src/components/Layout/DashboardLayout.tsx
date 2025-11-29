@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   BarChart3,
+  BarChart2,
 } from 'lucide-react'
 
 interface DashboardLayoutProps {
@@ -29,6 +30,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: '종목 목록', href: '/symbols', icon: TrendingUp, badge: null },
     { name: '알림 관리', href: '/alerts', icon: Bell, badge: '준비중' },
     { name: 'AI 분석', href: '/ai-reports', icon: BarChart3, badge: null },
+    { name: 'AI 통계', href: '/ai-stats', icon: BarChart2, badge: null },
     { name: '설정', href: '/settings', icon: Settings, badge: null },
   ]
 

@@ -11,7 +11,7 @@ export class AiReport {
   @Prop({ type: Types.ObjectId, ref: 'Symbol', required: true })
   symbolId: Types.ObjectId;
 
-  @Prop({ required: true, enum: ['1m', '5m', '15m', '30m', '1h', '4h', '1d'] })
+  @Prop({ required: true, enum: ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'] })
   timeframe: string;
 
   @Prop({ 
@@ -34,6 +34,57 @@ export class AiReport {
     confidence?: number;
     processingTimeMs?: number;
     tokensUsed?: number;
+    targetPrice1?: number;      // AI가 제시한 1차 목표가
+    targetPrice2?: number;      // AI가 제시한 2차 목표가
+    targetPercent1?: number;    // 1차 목표 수익률 (%)
+    targetPercent2?: number;    // 2차 목표 수익률 (%)
+    strategy?: {                // 🆕 AI 투자 전략
+      phase1?: {
+        entryRatio?: number;    // 진입 비율 (%)
+        entryTiming?: string;  // 진입 타이밍
+        reasoning?: string;     // 진입 근거
+        stopLoss?: {
+          price?: number;       // 손절가
+          percent?: number;     // 손절 비율 (%)
+          timing?: string;      // 손절 타이밍
+          reason?: string;      // 손절 사유
+        };
+      };
+      phase2?: {
+        bullish?: {
+          condition?: string;   // 상승 조건
+          action?: string;      // 액션 (전체 텍스트)
+          actionRatio?: number; // 추가 진입 비율 (%)
+          reason?: string;      // 근거
+        };
+        sideways?: {
+          condition?: string;   // 횡보 조건
+          action?: string;      // 액션
+          reason?: string;      // 근거
+        };
+        bearish?: {
+          condition?: string;   // 하락 조건
+          action?: string;      // 액션 (전체 텍스트)
+          exitRatio?: number;   // 청산 비율 (%)
+          reason?: string;      // 근거
+        };
+      };
+      phase3?: {
+        target1?: {
+          price?: string;       // 1차 목표가
+          action?: string;      // 액션 (전체 텍스트)
+          exitRatio?: number;   // 익절 비율 (%)
+          reason?: string;      // 근거
+        };
+        target2?: {
+          price?: string;       // 2차 목표가
+          action?: string;      // 액션 (전체 텍스트)
+          exitRatio?: number;   // 익절 비율 (%)
+          reason?: string;      // 근거
+        };
+        additional?: string;    // 추가 전략
+      };
+    };
     [key: string]: any;
   };
 
@@ -66,8 +117,10 @@ export class AiReport {
     priceAfter24h?: number;
     priceChangePercent?: number;
     recordedAt?: Date;
-    wasCorrect?: boolean; // AI 예측이 맞았는지
-    correctnessScore?: number; // 0~100 점수
+    wasDirectionCorrect?: boolean;   // 방향만 맞았는지 (기존 wasCorrect)
+    wasTarget1Achieved?: boolean;    // 1차 목표가 달성 여부
+    wasTarget2Achieved?: boolean;    // 2차 목표가 달성 여부
+    correctnessScore?: number;       // 0~100 점수
   };
 
   // AI 예측 정보 (비교용)

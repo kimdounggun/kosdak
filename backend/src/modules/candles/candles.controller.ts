@@ -12,11 +12,11 @@ export class CandlesController {
 
   @Get()
   @ApiOperation({ summary: 'Get candles for a symbol' })
-  @ApiQuery({ name: 'timeframe', required: false, enum: ['1m', '5m', '15m', '30m', '1h', '4h', '1d'] })
+  @ApiQuery({ name: 'timeframe', required: false, enum: ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'] })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async getCandles(
     @Param('symbolId') symbolId: string,
-    @Query('timeframe') timeframe: string = '5m',
+    @Query('timeframe') timeframe: string = '1d',
     @Query('limit') limit: number = 200,
   ) {
     return this.candlesService.findBySymbol(symbolId, timeframe, limit);
@@ -32,6 +32,7 @@ export class CandlesController {
     return this.candlesService.getLatestCandle(symbolId, timeframe);
   }
 }
+
 
 
 

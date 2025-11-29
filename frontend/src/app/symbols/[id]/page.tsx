@@ -122,7 +122,7 @@ export default function SymbolDetailPage() {
 
       // AI 리포트 불러오기 (선택사항)
       try {
-        const aiRes = await api.get(`/ai/report/latest?symbolId=${params.id}&timeframe=5m`)
+        const aiRes = await api.get(`/ai/report/latest?symbolId=${params.id}&investmentPeriod=${investmentPeriod}`)
         setAiReport(aiRes.data)
       } catch (err) {
         // AI 리포트 없음 - 정상 (사용자가 생성해야 함)
@@ -171,7 +171,6 @@ export default function SymbolDetailPage() {
       
       const response = await api.post('/ai/report', {
         symbolId: params.id,
-        timeframe: '5m',
         reportType: 'comprehensive',
         investmentPeriod: investmentPeriod
       })
@@ -788,7 +787,220 @@ export default function SymbolDetailPage() {
     
     if (investmentPeriod === 'swing') {
       // 3~7일 단기 스윙 전략 (AI 리포트 기반)
+      const aiStrategyData = aiReport?.metadata?.strategy
       
+      // 디버깅: AI 전략 데이터 확인
+      if (!aiStrategyData) {
+        console.warn('⚠️ AI 전략 데이터 없음 - Fallback 사용', {
+          hasAiReport: !!aiReport,
+          hasMetadata: !!aiReport?.metadata,
+          metadataKeys: aiReport?.metadata ? Object.keys(aiReport.metadata) : [],
+          aiReportId: aiReport?.id,
+          fullMetadata: aiReport?.metadata
+        })
+      } else if (!aiStrategyData.phase1 || !aiStrategyData.phase2 || !aiStrategyData.phase3) {
+        console.warn('⚠️ AI 전략 데이터 불완전 - Fallback 사용', {
+          phase1: !!aiStrategyData.phase1,
+          phase2: !!aiStrategyData.phase2,
+          phase3: !!aiStrategyData.phase3,
+          phase1Keys: aiStrategyData.phase1 ? Object.keys(aiStrategyData.phase1) : [],
+          phase2Keys: aiStrategyData.phase2 ? Object.keys(aiStrategyData.phase2) : [],
+          phase3Keys: aiStrategyData.phase3 ? Object.keys(aiStrategyData.phase3) : [],
+          phase1Data: JSON.stringify(aiStrategyData.phase1, null, 2),
+          phase2Data: JSON.stringify(aiStrategyData.phase2, null, 2),
+          phase3Data: JSON.stringify(aiStrategyData.phase3, null, 2),
+          fullStrategy: JSON.stringify(aiStrategyData, null, 2)
+        })
+      } else {
+        console.log('✅ AI 전략 데이터 정상:', {
+          phase1: !!aiStrategyData.phase1,
+          phase2: !!aiStrategyData.phase2,
+          phase3: !!aiStrategyData.phase3
+        })
+      }
+      
+      // AI 전략이 있으면 사용
+      if (aiStrategyData?.phase1 && aiStrategyData?.phase2 && aiStrategyData?.phase3) {
+        const phase1 = aiStrategyData.phase1
+        const phase2 = aiStrategyData.phase2
+        const phase3 = aiStrategyData.phase3
+        
+        return {
+          title: '3~7일 스윙 전략',
+          steps: [
+            {
+              day: '1일차',
+              title: `첫 진입 (${phase1.entryRatio}%)`,
+              scenarios: [
+                {
+                  type: 'entry' as const,
+                  condition: '진입 시점',
+                  action: (() => {
+                    // entryTiming 정리
+                    let entryTiming = phase1.entryTiming || '';
+                    // "근거:" 이후 텍스트 제거
+                    if (entryTiming.includes('근거:')) {
+                      entryTiming = entryTiming.split('근거:')[0].trim();
+                    }
+                    
+                    // entryTiming이 있으면 사용
+                    if (entryTiming) {
+                      // entryTiming에 이미 "→"가 있고 비율 정보가 포함되어 있으면 그대로 사용
+                      if (entryTiming.includes('→') && (entryTiming.includes('%') || entryTiming.includes('자산의'))) {
+                        return entryTiming
+                      }
+                      // entryTiming에 "→"가 있지만 비율 정보가 없으면 비율만 추가
+                      if (entryTiming.includes('→')) {
+                        return `${entryTiming}\n→ 총 자산의 ${phase1.entryRatio}% 진입 (예: 100만원 → ${(1000000 * phase1.entryRatio / 100).toLocaleString()}원)`
+                      }
+                      // entryTiming에 "→"가 없으면 "→" 추가 후 비율 정보 추가
+                      return `${entryTiming}\n→ 총 자산의 ${phase1.entryRatio}% 진입 (예: 100만원 → ${(1000000 * phase1.entryRatio / 100).toLocaleString()}원)`
+                    }
+                    // entryTiming이 없으면 기본 형식
+                    return `→ 총 자산의 ${phase1.entryRatio}% 진입 (예: 100만원 → ${(1000000 * phase1.entryRatio / 100).toLocaleString()}원)`
+                  })(),
+                  reason: (() => {
+                    // 근거를 줄바꿈으로 구분 (더 강력한 포맷팅)
+                    let formattedReasoning = (phase1.reasoning || '')
+                      // "1) ... 2) ..." 형식을 줄바꿈으로 구분
+                      .replace(/(\d+\))\s+/g, '\n$1 ')
+                      // "1) ...2) ..." (공백 없음) 형식도 처리
+                      .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                      // 시작 줄바꿈 제거
+                      .replace(/^\n+/, '')
+                      .trim()
+                    
+                    // 손절 정보 추가
+                    if (phase1.stopLoss) {
+                      let stopLossReason = (phase1.stopLoss.reason || '')
+                        // 손절 사유도 줄바꿈으로 구분
+                        .replace(/(\d+\))\s+/g, '\n$1 ')
+                        .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                        .replace(/^\n+/, '')
+                        .trim()
+                      
+                      formattedReasoning += `\n\n🛡️ 손절: ${phase1.stopLoss.price?.toLocaleString()}원 (${phase1.stopLoss.percent}%)`
+                      if (phase1.stopLoss.timing) {
+                        formattedReasoning += `\n손절 타이밍: ${phase1.stopLoss.timing}`
+                      }
+                      if (stopLossReason) {
+                        formattedReasoning += `\n손절 사유:\n${stopLossReason}`
+                      }
+                    }
+                    
+                    return formattedReasoning
+                  })()
+                }
+              ]
+            },
+            {
+              day: '2~3일차',
+              title: '추세 확인',
+              scenarios: [
+                ...(phase2.bullish ? [{
+                  type: 'bullish' as const,
+                  condition: phase2.bullish.condition,
+                  action: (() => {
+                    // action에서 가격 정보가 중복되면 제거
+                    const action = phase2.bullish.action || `시드의 ${phase2.bullish.actionRatio}% 추가`
+                    // condition에 이미 가격이 있으면 action에서 가격 부분 제거
+                    if (phase2.bullish.condition.includes('원') && action.includes('→')) {
+                      return action.split('→').pop()?.trim() || action
+                    }
+                    return action
+                  })(),
+                  reason: (phase2.bullish.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : []),
+                ...(phase2.sideways ? [{
+                  type: 'sideways' as const,
+                  condition: phase2.sideways.condition,
+                  action: (() => {
+                    const action = phase2.sideways.action
+                    // condition에 이미 가격이 있으면 action에서 가격 부분 제거
+                    if (phase2.sideways.condition.includes('원') && action.includes('→')) {
+                      return action.split('→').pop()?.trim() || action
+                    }
+                    return action
+                  })(),
+                  reason: (phase2.sideways.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : []),
+                ...(phase2.bearish ? [{
+                  type: 'bearish' as const,
+                  condition: phase2.bearish.condition,
+                  action: (() => {
+                    const action = phase2.bearish.action || `${phase2.bearish.exitRatio}% 청산`
+                    // condition에 이미 가격이 있으면 action에서 가격 부분 제거
+                    if (phase2.bearish.condition.includes('원') && action.includes('→')) {
+                      return action.split('→').pop()?.trim() || action
+                    }
+                    return action
+                  })(),
+                  reason: (phase2.bearish.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : [])
+              ]
+            },
+            {
+              day: '5~7일차',
+              title: '최종 판단',
+              scenarios: [
+                ...(phase3.target1 ? [{
+                  type: 'target' as const,
+                  condition: `목표 달성 (${phase3.target1.price})`,
+                  action: (() => {
+                    let action = phase3.target1.action || `${phase3.target1.exitRatio}% 익절`
+                    // action에서 가격 정보 제거 (condition에 이미 있음)
+                    // "60,461원 달성 시 → 포지션의 50% 익절" → "포지션의 50% 익절"
+                    if (action.includes('→')) {
+                      action = action.split('→').slice(1).join('→').trim()
+                    }
+                    // 가격 정보가 포함되어 있으면 제거
+                    action = action.replace(/[\d,]+원\s*(?:달성\s*시|돌파|하회)?\s*→?\s*/g, '').trim()
+                    return action || `${phase3.target1.exitRatio}% 익절`
+                  })(),
+                  reason: (phase3.target1.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : []),
+                ...(phase3.target2 ? [{
+                  type: 'target' as const,
+                  condition: `목표 달성 (${phase3.target2.price})`,
+                  action: (() => {
+                    let action = phase3.target2.action || `${phase3.target2.exitRatio}% 익절`
+                    // action에서 가격 정보 제거 (condition에 이미 있음)
+                    if (action.includes('→')) {
+                      action = action.split('→').slice(1).join('→').trim()
+                    }
+                    // 가격 정보가 포함되어 있으면 제거
+                    action = action.replace(/[\d,]+원\s*(?:달성\s*시|돌파|하회)?\s*→?\s*/g, '').trim()
+                    return action || `${phase3.target2.exitRatio}% 익절`
+                  })(),
+                  reason: (phase3.target2.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : [])
+              ]
+            }
+          ]
+        }
+      }
+      
+      // Fallback
       return {
         title: '3~7일 스윙 전략',
         steps: [
@@ -862,6 +1074,159 @@ export default function SymbolDetailPage() {
       }
     } else if (investmentPeriod === 'medium') {
       // 2~4주 중기 전략 (AI 리포트 기반)
+      const aiStrategyData = aiReport?.metadata?.strategy
+      
+      // AI 전략이 있으면 사용, 없으면 기본값
+      if (aiStrategyData?.phase1 && aiStrategyData?.phase2 && aiStrategyData?.phase3) {
+        const phase1 = aiStrategyData.phase1
+        const phase2 = aiStrategyData.phase2
+        const phase3 = aiStrategyData.phase3
+        
+        return {
+          title: '2~4주 중기 전략',
+          steps: [
+            {
+              day: '1주차',
+              title: `초기 진입 (${phase1.entryRatio}%)`,
+              scenarios: [
+                {
+                  type: 'entry' as const,
+                  condition: '진입 시점',
+                  action: `${phase1.entryTiming ? phase1.entryTiming + '\n' : ''}→ 총 자산의 ${phase1.entryRatio}% 진입 (예: 100만원 기준 → ${(1000000 * phase1.entryRatio / 100).toLocaleString()}원, 1000만원 기준 → ${(10000000 * phase1.entryRatio / 100).toLocaleString()}원)`,
+                  reason: (() => {
+                    // 근거를 줄바꿈으로 구분
+                    let formattedReasoning = phase1.reasoning
+                      .replace(/(\d+\))\s+/g, '\n$1 ')
+                      .replace(/^\n+/, '')
+                      .trim()
+                    
+                    // 손절 정보 추가
+                    if (phase1.stopLoss) {
+                      let stopLossReason = phase1.stopLoss.reason || ''
+                      if (stopLossReason) {
+                        stopLossReason = stopLossReason
+                          .replace(/(\d+\))\s+/g, '\n$1 ')
+                          .replace(/^\n+/, '')
+                          .trim()
+                      }
+                      
+                      formattedReasoning += `\n\n🛡️ 손절가: ${phase1.stopLoss.price?.toLocaleString()}원 (${phase1.stopLoss.percent}%)`
+                      if (phase1.stopLoss.timing) {
+                        formattedReasoning += `\n손절 타이밍: ${phase1.stopLoss.timing}`
+                      }
+                      if (stopLossReason) {
+                        formattedReasoning += `\n손절 사유:\n${stopLossReason}`
+                      }
+                    }
+                    
+                    return formattedReasoning
+                  })()
+                }
+              ]
+            },
+            {
+              day: '2~3주차',
+              title: '상황별 대응',
+              scenarios: [
+                ...(phase2.bullish ? [{
+                  type: 'bullish' as const,
+                  condition: phase2.bullish.condition,
+                  action: (() => {
+                    const action = phase2.bullish.action || `시드의 ${phase2.bullish.actionRatio}% 추가 진입`
+                    if (phase2.bullish.condition.includes('원') && action.includes('→')) {
+                      return action.split('→').pop()?.trim() || action
+                    }
+                    return action
+                  })(),
+                  reason: (phase2.bullish.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : []),
+                ...(phase2.sideways ? [{
+                  type: 'sideways' as const,
+                  condition: phase2.sideways.condition,
+                  action: (() => {
+                    const action = phase2.sideways.action
+                    if (phase2.sideways.condition.includes('원') && action.includes('→')) {
+                      return action.split('→').pop()?.trim() || action
+                    }
+                    return action
+                  })(),
+                  reason: (phase2.sideways.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : []),
+                ...(phase2.bearish ? [{
+                  type: 'bearish' as const,
+                  condition: phase2.bearish.condition,
+                  action: (() => {
+                    const action = phase2.bearish.action || `포지션의 ${phase2.bearish.exitRatio}% 청산`
+                    if (phase2.bearish.condition.includes('원') && action.includes('→')) {
+                      return action.split('→').pop()?.trim() || action
+                    }
+                    return action
+                  })(),
+                  reason: (phase2.bearish.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : [])
+              ]
+            },
+            {
+              day: '4주차',
+              title: '수익 실현',
+              scenarios: [
+                ...(phase3.target1 ? [{
+                  type: 'target' as const,
+                  condition: `1차 목표 달성 (${phase3.target1.price})`,
+                  action: (() => {
+                    const action = phase3.target1.action || `포지션의 ${phase3.target1.exitRatio}% 익절`
+                    if (action.includes('→') && action.includes('원 달성 시')) {
+                      return action.split('→').pop()?.trim() || action
+                    }
+                    return action
+                  })(),
+                  reason: (phase3.target1.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : []),
+                ...(phase3.target2 ? [{
+                  type: 'target' as const,
+                  condition: `2차 목표 달성 (${phase3.target2.price})`,
+                  action: (() => {
+                    const action = phase3.target2.action || `포지션의 ${phase3.target2.exitRatio}% 익절`
+                    if (action.includes('→') && action.includes('원 달성 시')) {
+                      return action.split('→').pop()?.trim() || action
+                    }
+                    return action
+                  })(),
+                  reason: (phase3.target2.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : []),
+                ...(phase3.additional ? [{
+                  type: 'hold' as const,
+                  condition: '추가 전략',
+                  action: phase3.additional,
+                  reason: 'AI 맞춤 전략'
+                }] : [])
+              ]
+            }
+          ]
+        }
+      }
+      
+      // Fallback: AI 전략이 없을 때 (호환성 유지)
       const targetPrice1 = aiStrategy?.target1 || currentPrice * 1.05
       const targetPrice2 = aiStrategy?.target2 || currentPrice * 1.12
       const stopLoss = currentPrice * 0.92
@@ -938,8 +1303,184 @@ export default function SymbolDetailPage() {
           }
         ]
       }
-    } else {
+    } else if (investmentPeriod === 'long') {
       // 1~3개월 장기 전략 (AI 리포트 기반)
+      const aiStrategyData = aiReport?.metadata?.strategy
+      
+      // 디버깅: AI 전략 데이터 확인
+      if (!aiStrategyData) {
+        console.warn('⚠️ 장기 전략: AI 전략 데이터 없음 - Fallback 사용', {
+          hasAiReport: !!aiReport,
+          hasMetadata: !!aiReport?.metadata,
+          metadataKeys: aiReport?.metadata ? Object.keys(aiReport.metadata) : []
+        })
+      } else if (!aiStrategyData.phase1 || !aiStrategyData.phase2 || !aiStrategyData.phase3) {
+        console.warn('⚠️ 장기 전략: AI 전략 데이터 불완전 - Fallback 사용', {
+          phase1: !!aiStrategyData.phase1,
+          phase2: !!aiStrategyData.phase2,
+          phase3: !!aiStrategyData.phase3
+        })
+      }
+      
+      // AI 전략이 있으면 사용
+      if (aiStrategyData?.phase1 && aiStrategyData?.phase2 && aiStrategyData?.phase3) {
+        const phase1 = aiStrategyData.phase1
+        const phase2 = aiStrategyData.phase2
+        const phase3 = aiStrategyData.phase3
+        
+        return {
+          title: '1~3개월 장기 전략',
+          steps: [
+            {
+              day: '1개월차',
+              title: `초기 진입 (${phase1.entryRatio}%)`,
+              scenarios: [
+                {
+                  type: 'entry' as const,
+                  condition: '진입 시점',
+                  action: (() => {
+                    let entryTiming = phase1.entryTiming || '';
+                    if (entryTiming.includes('근거:')) {
+                      entryTiming = entryTiming.split('근거:')[0].trim();
+                    }
+                    if (entryTiming) {
+                      if (entryTiming.includes('→') && (entryTiming.includes('%') || entryTiming.includes('자산의'))) {
+                        return entryTiming
+                      }
+                      if (entryTiming.includes('→')) {
+                        return `${entryTiming}\n→ 총 자산의 ${phase1.entryRatio}% 진입 (예: 100만원 기준 → ${(1000000 * phase1.entryRatio / 100).toLocaleString()}원, 1000만원 기준 → ${(10000000 * phase1.entryRatio / 100).toLocaleString()}원)`
+                      }
+                      return `${entryTiming}\n→ 총 자산의 ${phase1.entryRatio}% 진입 (예: 100만원 기준 → ${(1000000 * phase1.entryRatio / 100).toLocaleString()}원, 1000만원 기준 → ${(10000000 * phase1.entryRatio / 100).toLocaleString()}원)`
+                    }
+                    return `→ 총 자산의 ${phase1.entryRatio}% 진입 (예: 100만원 기준 → ${(1000000 * phase1.entryRatio / 100).toLocaleString()}원, 1000만원 기준 → ${(10000000 * phase1.entryRatio / 100).toLocaleString()}원)`
+                  })(),
+                  reason: (() => {
+                    let formattedReasoning = (phase1.reasoning || '')
+                      .replace(/(\d+\))\s+/g, '\n$1 ')
+                      .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                      .replace(/^\n+/, '')
+                      .trim()
+                    
+                    if (phase1.stopLoss) {
+                      let stopLossReason = (phase1.stopLoss.reason || '')
+                        .replace(/(\d+\))\s+/g, '\n$1 ')
+                        .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                        .replace(/^\n+/, '')
+                        .trim()
+                      
+                      formattedReasoning += `\n\n🛡️ 손절가: ${phase1.stopLoss.price?.toLocaleString()}원 (${phase1.stopLoss.percent}%)`
+                      if (phase1.stopLoss.timing) {
+                        formattedReasoning += `\n손절 타이밍: ${phase1.stopLoss.timing}`
+                      }
+                      if (stopLossReason) {
+                        formattedReasoning += `\n손절 사유:\n${stopLossReason}`
+                      }
+                    }
+                    
+                    return formattedReasoning
+                  })()
+                }
+              ]
+            },
+            {
+              day: '2개월차',
+              title: '상황별 대응',
+              scenarios: [
+                ...(phase2.bullish ? [{
+                  type: 'bullish' as const,
+                  condition: phase2.bullish.condition,
+                  action: (() => {
+                    let action = phase2.bullish.action || `시드의 ${phase2.bullish.actionRatio}% 추가`
+                    if (phase2.bullish.condition.includes('원') && action.includes('→')) {
+                      return action.split('→').pop()?.trim() || action
+                    }
+                    return action
+                  })(),
+                  reason: (phase2.bullish.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : []),
+                ...(phase2.sideways ? [{
+                  type: 'sideways' as const,
+                  condition: phase2.sideways.condition,
+                  action: (() => {
+                    let action = phase2.sideways.action
+                    if (phase2.sideways.condition.includes('원') && action.includes('→')) {
+                      return action.split('→').pop()?.trim() || action
+                    }
+                    return action
+                  })(),
+                  reason: (phase2.sideways.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : []),
+                ...(phase2.bearish ? [{
+                  type: 'bearish' as const,
+                  condition: phase2.bearish.condition,
+                  action: (() => {
+                    const action = phase2.bearish.action || `${phase2.bearish.exitRatio}% 청산`
+                    if (phase2.bearish.condition.includes('원') && action.includes('→')) {
+                      return action.split('→').pop()?.trim() || action
+                    }
+                    return action
+                  })(),
+                  reason: (phase2.bearish.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : [])
+              ]
+            },
+            {
+              day: '3개월차',
+              title: '수익 실현',
+              scenarios: [
+                ...(phase3.target1 ? [{
+                  type: 'target' as const,
+                  condition: `목표 달성 (${phase3.target1.price})`,
+                  action: (() => {
+                    let action = phase3.target1.action || `${phase3.target1.exitRatio}% 익절`
+                    if (action.includes('→')) {
+                      action = action.split('→').slice(1).join('→').trim()
+                    }
+                    action = action.replace(/[\d,]+원\s*(?:달성\s*시|돌파|하회)?\s*→?\s*/g, '').trim()
+                    return action || `${phase3.target1.exitRatio}% 익절`
+                  })(),
+                  reason: (phase3.target1.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : []),
+                ...(phase3.target2 ? [{
+                  type: 'target' as const,
+                  condition: `목표 달성 (${phase3.target2.price})`,
+                  action: (() => {
+                    let action = phase3.target2.action || `${phase3.target2.exitRatio}% 익절`
+                    if (action.includes('→')) {
+                      action = action.split('→').slice(1).join('→').trim()
+                    }
+                    action = action.replace(/[\d,]+원\s*(?:달성\s*시|돌파|하회)?\s*→?\s*/g, '').trim()
+                    return action || `${phase3.target2.exitRatio}% 익절`
+                  })(),
+                  reason: (phase3.target2.reason || '')
+                    .replace(/(\d+\))\s+/g, '\n$1 ')
+                    .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
+                    .replace(/^\n+/, '')
+                    .trim()
+                }] : [])
+              ]
+            }
+          ]
+        }
+      }
+      
+      // Fallback: AI 전략이 없을 때
       const targetPrice1 = currentPrice * 0.95
       const targetPrice2 = aiStrategy?.target2 || currentPrice * 1.20
       const stopLoss = aiStrategy?.stopLoss || currentPrice * 0.85
@@ -1117,28 +1658,45 @@ export default function SymbolDetailPage() {
         riskLevel = 'medium'
       }
       
+      // AI 리포트에서 동적 목표 수익률 가져오기
+      const targetPercent1 = aiReport?.metadata?.targetPercent1
+      const targetPercent2 = aiReport?.metadata?.targetPercent2
+      const hasTargets = targetPercent1 && targetPercent2
+      
       // 액션별 설정
       if (aiAction.includes('강력 매수')) {
         actionColor = '#00E5A8'
         shortTerm = `상승 가능성 ${probability}%`
         
         if (investmentPeriod === 'swing') {
-          recommendation = `${period} 기간 내 1일차 진입 전략 고려 (현재가 ${candles[0].close.toLocaleString()}원)`
+          recommendation = hasTargets 
+            ? `${period} 기간 내 1일차 진입 전략 고려 (목표: +${targetPercent1}%)`
+            : `${period} 기간 내 1일차 진입 전략 고려 (현재가 ${candles[0].close.toLocaleString()}원)`
         } else if (investmentPeriod === 'medium') {
-          recommendation = `이번 주 내 첫 진입 후 2~3주차 추가 매수 (목표: +10~12%)`
+          recommendation = hasTargets
+            ? `이번 주 내 첫 진입 후 2~3주차 추가 매수 (목표: +${targetPercent1}%)`
+            : `이번 주 내 첫 진입 후 2~3주차 추가 매수`
         } else {
-          recommendation = `1개월간 3~4회 분할 매수로 평균 단가 낮추기 (목표: +20~30%)`
+          recommendation = hasTargets
+            ? `1개월간 3~4회 분할 매수로 평균 단가 낮추기 (목표: +${targetPercent1}%)`
+            : `1개월간 3~4회 분할 매수로 평균 단가 낮추기`
         }
       } else if (aiAction.includes('매수')) {
         actionColor = '#00D1FF'
         shortTerm = `상승 가능성 ${probability}%`
         
         if (investmentPeriod === 'swing') {
-          recommendation = `${period} 기간 내 소량 진입 후 추세 확인`
+          recommendation = hasTargets
+            ? `${period} 기간 내 소량 진입 후 추세 확인 (목표: +${targetPercent1}%)`
+            : `${period} 기간 내 소량 진입 후 추세 확인`
         } else if (investmentPeriod === 'medium') {
-          recommendation = `1주차 소량 진입 후 2주차 추가 검토 (목표: +7~10%)`
+          recommendation = hasTargets
+            ? `1주차 소량 진입 후 2주차 추가 검토 (목표: +${targetPercent1}%)`
+            : `1주차 소량 진입 후 2주차 추가 검토`
         } else {
-          recommendation = `첫 달 저점 매수 기회 포착, 2개월차 추세 확인 (목표: +15~20%)`
+          recommendation = hasTargets
+            ? `첫 달 저점 매수 기회 포착, 2개월차 추세 확인 (목표: +${targetPercent1}%)`
+            : `첫 달 저점 매수 기회 포착, 2개월차 추세 확인`
         }
       } else if (aiAction.includes('관망')) {
         actionColor = '#CFCFCF'
@@ -1263,9 +1821,9 @@ export default function SymbolDetailPage() {
       if (investmentPeriod === 'swing') {
         recommendation = `${period} 기간 내 1일차 진입 전략 고려 (현재가 ${candles[0].close.toLocaleString()}원)`
       } else if (investmentPeriod === 'medium') {
-        recommendation = `이번 주 내 첫 진입 후 2~3주차 추가 매수 (목표: +10~12%)`
+        recommendation = `이번 주 내 첫 진입 후 2~3주차 추가 매수 (예상 목표: +10% 내외)`
       } else {
-        recommendation = `1개월간 3~4회 분할 매수로 평균 단가 낮추기 (목표: +20~30%)`
+        recommendation = `1개월간 3~4회 분할 매수로 평균 단가 낮추기 (예상 목표: +20% 내외)`
       }
       risk = '낮음'
       riskLevel = 'low'
@@ -1277,9 +1835,9 @@ export default function SymbolDetailPage() {
       if (investmentPeriod === 'swing') {
         recommendation = `${period} 기간 내 소량 진입 후 추세 확인`
       } else if (investmentPeriod === 'medium') {
-        recommendation = `1주차 소량 진입 후 2주차 추가 검토 (목표: +7~10%)`
+        recommendation = `1주차 소량 진입 후 2주차 추가 검토 (예상 목표: +7% 내외)`
       } else {
-        recommendation = `첫 달 저점 매수 기회 포착, 2개월차 추세 확인 (목표: +15~20%)`
+        recommendation = `첫 달 저점 매수 기회 포착, 2개월차 추세 확인 (예상 목표: +15% 내외)`
       }
       risk = '중간'
       riskLevel = 'medium'
@@ -2400,7 +2958,9 @@ export default function SymbolDetailPage() {
                     </div>
                     <div className="flex-1">
                       <h3 className="text-base font-semibold text-white">현재 추천 전략 요약</h3>
-                      <p className="text-xs text-[#00E5A8]">AI가 분석한 최적 투자 전략 • {investmentPeriod === 'swing' ? '단기 스윙' : investmentPeriod === 'medium' ? '중기' : '장기'} 기준</p>
+                      <p className="text-xs text-[#00E5A8]">
+                        AI가 분석한 최적 투자 전략 • {investmentPeriod === 'swing' ? '단기 스윙 (일봉)' : investmentPeriod === 'medium' ? '중기 (일봉)' : '장기 (주봉)'} 기준
+                      </p>
                     </div>
                     {aiReport && (
                       <div className="text-right">
@@ -2653,7 +3213,7 @@ export default function SymbolDetailPage() {
                                               → {scenario.action}
                                             </p>
                                             <p className="text-xs text-[#CFCFCF]/80">
-                                              {scenario.reason}
+                                              <span className="whitespace-pre-line">{scenario.reason}</span>
                                             </p>
                             </div>
                           </div>

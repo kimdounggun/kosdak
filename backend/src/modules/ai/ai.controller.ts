@@ -26,12 +26,23 @@ export class AiController {
   @Get('report/latest')
   @ApiOperation({ summary: 'Get latest AI report for a symbol' })
   @ApiQuery({ name: 'symbolId', required: true })
-  @ApiQuery({ name: 'timeframe', required: false })
+  @ApiQuery({ name: 'timeframe', required: false, enum: ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'] })
+  @ApiQuery({ name: 'investmentPeriod', required: false, enum: ['swing', 'medium', 'long'] })
   async getLatestReport(
     @Request() req,
     @Query('symbolId') symbolId: string,
-    @Query('timeframe') timeframe: string = '5m',
+    @Query('timeframe') timeframe?: string,
+    @Query('investmentPeriod') investmentPeriod: string = 'swing',
   ) {
+    // timeframe이 없으면 investmentPeriod에 따라 결정
+    if (!timeframe) {
+      const timeframeMap: Record<string, string> = {
+        'swing': '1d',
+        'medium': '1d',
+        'long': '1w',
+      };
+      timeframe = timeframeMap[investmentPeriod] || '1d';
+    }
     return this.aiService.getLatestReport(symbolId, timeframe, req.user._id.toString());
   }
 
@@ -59,6 +70,18 @@ export class AiController {
     @Param('symbolId') symbolId: string,
   ) {
     return this.aiService.getBacktestingStats(symbolId, req.user._id.toString());
+  }
+
+  @Get('stats/platform')
+  @ApiOperation({ summary: 'Get platform-wide AI statistics' })
+  async getPlatformStats() {
+    return this.aiService.getPlatformStats();
+  }
+
+  @Get('stats/me')
+  @ApiOperation({ summary: 'Get my AI statistics (all symbols combined)' })
+  async getMyStats(@Request() req) {
+    return this.aiService.getMyStats(req.user._id.toString());
   }
 }
 

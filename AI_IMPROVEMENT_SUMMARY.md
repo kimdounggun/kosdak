@@ -299,3 +299,4 @@ prediction = model.predict()  # 상승 확률 76%
 **상태**: ✅ 구현 완료, 테스트 대기
 
 
+

@@ -60,36 +60,42 @@ export class OutcomeTrackerWorker {
 
           // AI 예측이 맞았는지 판단
           const predictedAction = report.predictedAction || '관망';
-          let wasCorrect = false;
+          let wasDirectionCorrect = false;
           let correctnessScore = 0;
 
-          // 예측 정확도 계산
+          // 🆕 목표가 달성 여부 계산
+          const targetPrice1 = report.metadata?.targetPrice1;
+          const targetPrice2 = report.metadata?.targetPrice2;
+          const wasTarget1Achieved = targetPrice1 ? currentPrice >= targetPrice1 : false;
+          const wasTarget2Achieved = targetPrice2 ? currentPrice >= targetPrice2 : false;
+
+          // 방향 정확도 계산 (기존 로직 유지)
           if (predictedAction.includes('매수')) {
             // 매수 예측: 가격이 올랐으면 정답
             if (priceChangePercent > 0) {
-              wasCorrect = true;
+              wasDirectionCorrect = true;
               correctnessScore = Math.min(100, priceChangePercent * 20); // +5% = 100점
             } else {
-              wasCorrect = false;
+              wasDirectionCorrect = false;
               correctnessScore = Math.max(0, 100 + priceChangePercent * 20);
             }
           } else if (predictedAction.includes('매도') || predictedAction.includes('주의')) {
             // 매도 예측: 가격이 떨어졌거나 횡보하면 정답
             if (priceChangePercent <= 0) {
-              wasCorrect = true;
+              wasDirectionCorrect = true;
               correctnessScore = Math.min(100, Math.abs(priceChangePercent) * 20);
             } else {
-              wasCorrect = false;
+              wasDirectionCorrect = false;
               correctnessScore = Math.max(0, 100 - priceChangePercent * 20);
             }
           } else {
             // 관망 예측: 변화가 작으면 정답
             const absChange = Math.abs(priceChangePercent);
             if (absChange < 2) {
-              wasCorrect = true;
+              wasDirectionCorrect = true;
               correctnessScore = Math.max(0, 100 - absChange * 50);
             } else {
-              wasCorrect = false;
+              wasDirectionCorrect = false;
               correctnessScore = Math.max(0, 50 - absChange * 10);
             }
           }
@@ -103,7 +109,9 @@ export class OutcomeTrackerWorker {
                   priceAfter24h: currentPrice,
                   priceChangePercent: parseFloat(priceChangePercent.toFixed(2)),
                   recordedAt: new Date(),
-                  wasCorrect,
+                  wasDirectionCorrect,            // 방향 정확도
+                  wasTarget1Achieved,              // 1차 목표 달성
+                  wasTarget2Achieved,              // 2차 목표 달성
                   correctnessScore: Math.round(correctnessScore),
                 },
               },
@@ -112,7 +120,7 @@ export class OutcomeTrackerWorker {
 
           successCount++;
           this.logger.debug(
-            `✅ ${report.symbolId} - ${predictedAction}: ${priceChangePercent.toFixed(2)}% (${wasCorrect ? '정답' : '오답'})`,
+            `✅ ${report.symbolId} - ${predictedAction}: ${priceChangePercent.toFixed(2)}% (방향: ${wasDirectionCorrect ? '✓' : '✗'}, 목표1: ${wasTarget1Achieved ? '✓' : '✗'}, 목표2: ${wasTarget2Achieved ? '✓' : '✗'})`,
           );
         } catch (error) {
           failCount++;
