@@ -204,19 +204,19 @@ export default function AiStatsPage() {
               <div className="space-y-4">
                 <PeriodStats
                   title="단기 스윙 (3~7일)"
-                  targetGoal="+5% 목표"
+                  targetGoal="단기 스윙 구간 성과"
                   platform={platformStats?.byPeriod?.swing}
                   my={myStats?.byPeriod?.swing}
                 />
                 <PeriodStats
                   title="중기 (2~4주)"
-                  targetGoal="+10% 목표"
+                  targetGoal="중기 구간 성과"
                   platform={platformStats?.byPeriod?.medium}
                   my={myStats?.byPeriod?.medium}
                 />
                 <PeriodStats
                   title="장기 (1~3개월)"
-                  targetGoal="+20% 목표"
+                  targetGoal="장기 구간 성과"
                   platform={platformStats?.byPeriod?.long}
                   my={myStats?.byPeriod?.long}
                 />

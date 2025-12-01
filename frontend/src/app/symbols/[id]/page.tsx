@@ -7,7 +7,6 @@ import { api } from '@/lib/api'
 import DashboardLayout from '@/components/Layout/DashboardLayout'
 import toast from 'react-hot-toast'
 import { ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ReferenceDot } from 'recharts'
-import AiReportViewer from '@/components/Dashboard/AiReportViewer'
 import AiTrustPanel from '@/components/Dashboard/AiTrustPanel'
 import AiHistoryPanel from '@/components/Dashboard/AiHistoryPanel'
 import LoadingSpinner from '@/components/common/LoadingSpinner'
@@ -98,6 +97,10 @@ export default function SymbolDetailPage() {
   const [investmentPeriod, setInvestmentPeriod] = useState<'swing' | 'medium' | 'long'>('swing')
   const [chartView, setChartView] = useState<'daily' | 'weekly' | 'monthly'>('daily')
   const [cachedReports, setCachedReports] = useState<Map<string, {data: any, timestamp: number}>>(new Map())
+  const [userCapital, setUserCapital] = useState<number | null>(null)
+  const [symbolAllocationPct, setSymbolAllocationPct] = useState<number>(30)
+  const [riskProfile, setRiskProfile] = useState<'conservative' | 'basic' | 'aggressive'>('basic')
+  const [showScenarioDetails, setShowScenarioDetails] = useState(false)
 
   useEffect(() => {
     if (!isHydrated) return
@@ -641,6 +644,163 @@ export default function SymbolDetailPage() {
     }
   }
 
+  // 전략 플랜(보수형/기본형/공격형) 및 계좌 기준 수치 계산
+  const buildStrategyPlans = () => {
+    if (!candles || candles.length === 0) return null
+
+    const currentPrice = candles[0].close
+    const meta = aiReport?.metadata || {}
+
+    const stopLossPrice = meta.stopLossPrice ?? currentPrice * 0.97
+    const baseStopLossPct = currentPrice
+      ? Number((((stopLossPrice - currentPrice) / currentPrice) * 100).toFixed(1))
+      : -3
+
+    // 과거 유사 패턴 기반 성과 구간 (백엔드에서 계산된 메타데이터)
+    const historicalPattern = meta.historicalPattern as
+      | { p25?: number; p75?: number; avgReturn?: number }
+      | undefined
+    const globalExpectedMin =
+      typeof historicalPattern?.p25 === 'number' ? historicalPattern.p25 : null
+    const globalExpectedMax =
+      typeof historicalPattern?.p75 === 'number' ? historicalPattern.p75 : null
+
+    // 1순위: 백엔드 AI가 설계한 riskPlans 사용
+    const riskPlans = meta.strategy?.riskPlans
+
+    let plans:
+      | Array<{
+          id: 'conservative' | 'basic' | 'aggressive'
+          name: string
+          entryRatio: number
+          addRatio: number
+          stopLossPct: number
+          expectedMin?: number | null
+          expectedMax?: number | null
+          comment?: string
+        }>
+      | null = null
+
+    if (riskPlans?.conservative && riskPlans.basic && riskPlans.aggressive) {
+      const normalize = (
+        id: 'conservative' | 'basic' | 'aggressive',
+        fallbackName: string,
+        plan: any,
+      ) => {
+        const entryRatio = Number(plan.entryRatio ?? 0)
+        const addRatio = Number(plan.addRatio ?? 0)
+        const stopLossPercent = Number(plan.stopLossPercent ?? baseStopLossPct)
+
+        // 기대 수익 구간: 우선 순위
+        // 1) plan.expectedReturnMin/Max (AI/백엔드가 명시적으로 제공한 값)
+        // 2) 메타데이터의 과거 패턴 p25/p75 (데이터 기반 분포)
+        let expectedMin: number | null = null
+        let expectedMax: number | null = null
+
+        const rawMin = plan.expectedReturnMin
+        const rawMax = plan.expectedReturnMax
+
+        if (typeof rawMin === 'number' && typeof rawMax === 'number') {
+          expectedMin = rawMin
+          expectedMax = Math.max(rawMin, rawMax)
+        } else if (globalExpectedMin != null && globalExpectedMax != null) {
+          expectedMin = globalExpectedMin
+          expectedMax = globalExpectedMax
+        }
+
+        return {
+          id,
+          name: String(plan.name || fallbackName),
+          entryRatio: entryRatio || 0,
+          addRatio: addRatio || 0,
+          stopLossPct: stopLossPercent || baseStopLossPct,
+          expectedMin,
+          expectedMax,
+          comment: typeof plan.comment === 'string' ? plan.comment : undefined,
+        }
+      }
+
+      plans = [
+        normalize('conservative', '보수형', riskPlans.conservative),
+        normalize('basic', '기본형', riskPlans.basic),
+        normalize('aggressive', '공격형', riskPlans.aggressive),
+      ]
+    } else {
+      // Fallback: 기존 프론트 계산 방식
+      // 기대 수익 퍼센트는 백엔드/실제 성과 기반 메타데이터가 준비될 때까지
+      // 과거 패턴(p25/p75)이 있을 때만 사용
+      const baseEntryRatio = meta.strategy?.phase1?.entryRatio ?? 35
+
+      plans = [
+        {
+          id: 'conservative',
+          name: '보수형',
+          entryRatio: Math.max(15, baseEntryRatio - 10),
+          addRatio: 25,
+          stopLossPct: Math.max(baseStopLossPct - 2, baseStopLossPct - 4),
+          expectedMin: globalExpectedMin,
+          expectedMax: globalExpectedMax,
+          comment: '계좌 변동성을 최소화하는 보수형 전략',
+        },
+        {
+          id: 'basic',
+          name: '기본형',
+          entryRatio: baseEntryRatio,
+          addRatio: 30,
+          stopLossPct: baseStopLossPct,
+          expectedMin: globalExpectedMin,
+          expectedMax: globalExpectedMax,
+          comment: '위험과 수익을 균형 있게 가져가는 기본 전략',
+        },
+        {
+          id: 'aggressive',
+          name: '공격형',
+          entryRatio: Math.min(70, baseEntryRatio + 15),
+          addRatio: 30,
+          stopLossPct: baseStopLossPct + 2,
+          expectedMin: globalExpectedMin,
+          expectedMax: globalExpectedMax,
+          comment: '수익 극대화를 노리지만 변동성이 큰 공격형 전략',
+        },
+      ]
+    }
+
+    const selectedPlan = plans.find(p => p.id === riskProfile) || plans[1]
+
+    let accountView: {
+      totalAllocation: number
+      firstEntryAmount: number
+      additionalEntryAmount: number
+      maxLossAmount: number
+      maxLossAccountPct: number
+    } | null = null
+
+    if (userCapital && userCapital > 0 && symbolAllocationPct > 0) {
+      const totalAllocation = Math.round((userCapital * symbolAllocationPct) / 100)
+      const firstEntryAmount = Math.round((totalAllocation * selectedPlan.entryRatio) / 100)
+      const additionalEntryAmount = Math.round((totalAllocation * selectedPlan.addRatio) / 100)
+      const maxLossAmount = Math.round((totalAllocation * Math.abs(selectedPlan.stopLossPct)) / 100)
+      const maxLossAccountPct = Number(((maxLossAmount / userCapital) * 100).toFixed(2))
+
+      accountView = {
+        totalAllocation,
+        firstEntryAmount,
+        additionalEntryAmount,
+        maxLossAmount,
+        maxLossAccountPct,
+      }
+    }
+
+    return {
+      currentPrice,
+      stopLossPrice,
+      plans,
+      selectedPlan,
+      accountView,
+      backtestSummary: meta.backtestSummary,
+    }
+  }
+
 
   // 주간 분석 생성 (AI 기반)
   const generateWeeklyAnalysis = () => {
@@ -745,29 +905,23 @@ export default function SymbolDetailPage() {
     }
   }
 
-  // AI 리포트에서 전략 정보 파싱
+  // AI 리포트 메타데이터에서 전략 가격 정보 사용 (완전 AI/백엔드 기반)
   const parseAiStrategy = () => {
-    if (!aiReport?.content) return null
-    
-    const content = aiReport.content
-    const currentPrice = candles?.[0]?.close || 0
-    
-    // AI 리포트에서 진입가, 손절가, 목표가 파싱
-    const entryMatch = content.match(/진입가:\s*([\d,]+)원/)
-    const stopLossMatch = content.match(/손절가:\s*\[?현재가[^\]]*\]?\s*([\d,]+)원/)
-    const target1Match = content.match(/1차 목표가:\s*\[?현재가[^\]]*\]?\s*([\d,]+)원/)
-    const target2Match = content.match(/2차 목표가:\s*\[?현재가[^\]]*\]?\s*([\d,]+)원/)
-    
-    const entryPrice = entryMatch ? parseInt(entryMatch[1].replace(/,/g, '')) : currentPrice
-    const stopLoss = stopLossMatch ? parseInt(stopLossMatch[1].replace(/,/g, '')) : currentPrice * 0.97
-    const target1 = target1Match ? parseInt(target1Match[1].replace(/,/g, '')) : currentPrice * 1.03
-    const target2 = target2Match ? parseInt(target2Match[1].replace(/,/g, '')) : currentPrice * 1.05
-    
+    if (!aiReport?.metadata || !candles || candles.length === 0) return null
+
+    const currentPrice = candles[0].close
+    const meta = aiReport.metadata
+
+    const entryPrice = meta.priceAtGeneration ?? currentPrice
+    const stopLoss = meta.stopLossPrice ?? currentPrice * 0.97
+    const target1 = meta.targetPrice1 ?? currentPrice * 1.03
+    const target2 = meta.targetPrice2 ?? currentPrice * 1.05
+
     return {
       entryPrice,
       stopLoss,
       target1,
-      target2
+      target2,
     }
   }
 
@@ -788,7 +942,17 @@ export default function SymbolDetailPage() {
     
     if (investmentPeriod === 'swing') {
       // 3~7일 단기 스윙 전략 (AI 리포트 기반)
+      const strategyType = aiReport?.metadata?.strategyType
       const aiStrategyData = aiReport?.metadata?.strategy
+
+      // 🆕 Fallback 전략은 "데이터 없음"으로 처리 (가짜 전략 UI 표시 금지)
+      if (strategyType === 'fallback') {
+        console.warn('⚠️ AI 전략이 Fallback 상태입니다. 전략 UI를 숨깁니다.', {
+          strategyType,
+          hasStrategy: !!aiStrategyData,
+        })
+        return null
+      }
       
       // 디버깅: AI 전략 데이터 확인
       if (!aiStrategyData) {
@@ -1823,9 +1987,9 @@ export default function SymbolDetailPage() {
       if (investmentPeriod === 'swing') {
         recommendation = `${period} 기간 내 1일차 진입 전략 고려 (현재가 ${candles[0].close.toLocaleString()}원)`
       } else if (investmentPeriod === 'medium') {
-        recommendation = `이번 주 내 첫 진입 후 2~3주차 추가 매수 (예상 목표: +10% 내외)`
+        recommendation = `이번 주 내 첫 진입 후 2~3주차 추가 매수 (구체 목표 수익률은 데이터 기반 성과 축적 후 제공)`
       } else {
-        recommendation = `1개월간 3~4회 분할 매수로 평균 단가 낮추기 (예상 목표: +20% 내외)`
+        recommendation = `1개월간 3~4회 분할 매수로 평균 단가 낮추기 (구체 목표 수익률은 데이터 기반 성과 축적 후 제공)`
       }
       risk = '낮음'
       riskLevel = 'low'
@@ -1837,9 +2001,9 @@ export default function SymbolDetailPage() {
       if (investmentPeriod === 'swing') {
         recommendation = `${period} 기간 내 소량 진입 후 추세 확인`
       } else if (investmentPeriod === 'medium') {
-        recommendation = `1주차 소량 진입 후 2주차 추가 검토 (예상 목표: +7% 내외)`
+        recommendation = `1주차 소량 진입 후 2주차 추가 검토 (구체 목표 수익률은 데이터 기반 성과 축적 후 제공)`
       } else {
-        recommendation = `첫 달 저점 매수 기회 포착, 2개월차 추세 확인 (예상 목표: +15% 내외)`
+        recommendation = `첫 달 저점 매수 기회 포착, 2개월차 추세 확인 (구체 목표 수익률은 데이터 기반 성과 축적 후 제공)`
       }
       risk = '중간'
       riskLevel = 'medium'
@@ -1891,6 +2055,80 @@ export default function SymbolDetailPage() {
   const confidenceMetrics = calculateConfidenceMetrics()
   const marketStrength = calculateMarketStrength()
   const aiConclusion = calculateAiConclusion()
+
+  // 신뢰도 근거 하이라이트 (소형 배지용)
+  const confidenceReasons: string[] = []
+  if (indicators?.rsi !== undefined) {
+    if (indicators.rsi > 70) {
+      confidenceReasons.push('RSI 과매수 구간')
+    } else if (indicators.rsi < 30) {
+      confidenceReasons.push('RSI 과매도 구간')
+    } else if (indicators.rsi >= 55 && indicators.rsi <= 65) {
+      confidenceReasons.push('RSI 상승 모멘텀')
+    }
+  }
+  if (
+    indicators?.macd !== undefined &&
+    indicators?.macdSignal !== undefined &&
+    indicators.macd > indicators.macdSignal
+  ) {
+    confidenceReasons.push('MACD 매수 교차')
+  }
+  if (signalRegime.bullishPercentage !== null) {
+    if (signalRegime.bullishPercentage >= 60) {
+      confidenceReasons.push('지표 일치도 높음')
+    } else if (signalRegime.bullishPercentage <= 40) {
+      confidenceReasons.push('하락 신호 우세')
+    }
+  }
+  if (marketStrength.direction === '상승') {
+    confidenceReasons.push('시장 강도: 상승')
+  } else if (marketStrength.direction === '하락') {
+    confidenceReasons.push('시장 강도: 하락')
+  }
+
+  // 🆕 백엔드 프리미엄 요약 사용 (없으면 기존 계산값 사용)
+  const recommendationSummary = aiReport?.metadata?.recommendationSummary
+  const strategyType = aiReport?.metadata?.strategyType as
+    | 'default'
+    | 'premium'
+    | 'fallback'
+    | undefined
+  const isFallbackStrategy = strategyType === 'fallback'
+
+  const displayAction = recommendationSummary?.recommendation || aiConclusion.action
+  const displayReason =
+    recommendationSummary?.reason || aiConclusion.reasons.slice(0, 2).join(' • ')
+  const displayActionText =
+    recommendationSummary?.action || aiConclusion.recommendation
+
+  // 현재 추천 전략 요약 박스에서 사용할 핵심 가격 레벨 (진입/목표/손절)
+  const aiStrategyForSummary = !isFallbackStrategy ? parseAiStrategy() : null
+  const currentPriceForSummary =
+    candles && candles.length > 0 ? candles[0].close : null
+
+  const summaryEntryPrice =
+    (aiStrategyForSummary?.entryPrice ?? currentPriceForSummary) || null
+
+  let summaryTarget1: number | null = null
+  let summaryTarget2: number | null = null
+  let summaryStopLoss: number | null = null
+
+  if (currentPriceForSummary && !isFallbackStrategy) {
+    if (aiStrategyForSummary) {
+      summaryTarget1 = aiStrategyForSummary.target1
+      summaryTarget2 = aiStrategyForSummary.target2
+      summaryStopLoss = aiStrategyForSummary.stopLoss
+    } else {
+      const fallbackTargets = getFallbackTargets(
+        investmentPeriod,
+        currentPriceForSummary,
+      )
+      summaryTarget1 = fallbackTargets.target1
+      summaryTarget2 = fallbackTargets.target2
+      summaryStopLoss = fallbackTargets.stopLoss
+    }
+  }
 
   // 추세 방향 계산 (한글)
   const trendDirection = marketStrength.direction === '상승' ? '상승 추세' : marketStrength.direction === '하락' ? '하락 추세' : '중립'
@@ -2949,7 +3187,7 @@ export default function SymbolDetailPage() {
                   </div>
                 </div>
 
-                {/* 현재 추천 전략 요약 박스 - 깔끔한 다크 디자인 */}
+                {/* 1단계: 현재 추천 전략 요약 박스 - 깔끔한 다크 디자인 */}
                 <div className="bg-[#1a1f2e] rounded-xl p-5 border border-[#2a3142]">
                   {/* 헤더 */}
                   <div className="flex items-center gap-3 mb-5">
@@ -2959,7 +3197,12 @@ export default function SymbolDetailPage() {
                       </svg>
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-base font-semibold text-white">현재 추천 전략 요약</h3>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#00E5A8] text-[11px] font-bold text-black">
+                          1
+                        </span>
+                        <h3 className="text-base font-semibold text-white">현재 추천 전략 요약</h3>
+                      </div>
                       <p className="text-xs text-[#00E5A8]">
                         AI가 분석한 최적 투자 전략 • {investmentPeriod === 'swing' ? '단기 스윙 (일봉)' : investmentPeriod === 'medium' ? '중기 (일봉)' : '장기 (주봉)'} 기준
                       </p>
@@ -2991,11 +3234,74 @@ export default function SymbolDetailPage() {
                         <div className="w-1.5 h-1.5 rounded-full bg-[#00E5A8]"></div>
                         <p className="text-xs text-[#8b95a5]">전략</p>
                       </div>
-                      <p className="text-lg font-bold text-white mb-1.5">{aiConclusion.action}</p>
+                      <p className="text-lg font-bold text-white mb-1.5">{displayAction}</p>
                       <p className="text-xs text-[#00E5A8]">
-                        {aiConclusion.reasons.slice(0, 2).join(' • ')}
+                        {displayReason}
                       </p>
                     </div>
+
+                    {/* 핵심 가격 레벨 (진입 / 목표가 / 손절가)
+                       - AI 전략이 Fallback이면 숫자 대신 "데이터 없음" 표시 */}
+                    {isFallbackStrategy ? (
+                      <div className="bg-[#141821] rounded-lg p-4 border border-dashed border-[#2a3142]">
+                        <p className="text-[11px] text-[#A0AEC0]">
+                          AI 전략이 충분하지 않아 <span className="font-semibold">가격 레벨 데이터를 제공할 수 없습니다.</span>{' '}
+                          새로 분석을 실행하면 최신 전략 기준으로 진입·목표·손절 가격이 계산됩니다.
+                        </p>
+                      </div>
+                    ) : (
+                      summaryEntryPrice !== null &&
+                      summaryTarget1 !== null &&
+                      summaryTarget2 !== null &&
+                      summaryStopLoss !== null && (
+                        <div className="bg-[#141821] rounded-lg p-4 border border-dashed border-[#2a3142]">
+                          <div className="flex items-center justify-between text-[10px] text-[#8b95a5] mb-2">
+                            <span>핵심 가격 레벨</span>
+                            <span>
+                              기준가{' '}
+                              <span className="font-semibold text-[#E2E8F0]">
+                                {summaryEntryPrice.toLocaleString()}원
+                              </span>
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div>
+                              <p className="text-[10px] text-[#8b95a5] mb-1">
+                                진입 가격
+                              </p>
+                              <p className="text-sm font-semibold text-white">
+                                {summaryEntryPrice.toLocaleString()}원
+                              </p>
+                              <p className="text-[10px] text-[#718096] mt-0.5">
+                                분할 진입 기준
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-[#8b95a5] mb-1">
+                                목표가
+                              </p>
+                              <p className="text-sm font-semibold text-[#00E5A8]">
+                                {summaryTarget1.toLocaleString()}원
+                              </p>
+                              <p className="text-[10px] text-[#718096] mt-0.5">
+                                2차 {summaryTarget2.toLocaleString()}원
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-[#8b95a5] mb-1">
+                                손절가
+                              </p>
+                              <p className="text-sm font-semibold text-[#F56565]">
+                                {summaryStopLoss.toLocaleString()}원
+                              </p>
+                              <p className="text-[10px] text-[#718096] mt-0.5">
+                                손실 한도 관리
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    )}
                     
                     {/* 위험도 */}
                     <div className="bg-[#141821] rounded-lg p-4 border border-[#2a3142]">
@@ -3024,7 +3330,7 @@ export default function SymbolDetailPage() {
                   </div>
 
                   {/* 핵심 수치 3개 메트릭 */}
-                  <div className="grid grid-cols-3 gap-2 mb-4">
+                  <div className="grid grid-cols-3 gap-2 mb-3">
                     {/* 신뢰도 */}
                     <div className="text-center bg-[#141821] border border-[#2a3142] rounded-lg py-4 px-2">
                       <p className="text-[10px] text-[#8b95a5] mb-1.5">신뢰도</p>
@@ -3079,10 +3385,24 @@ export default function SymbolDetailPage() {
                     </div>
                   </div>
 
+                  {/* 신뢰도 근거 배지 - 핵심 지표 2~3개만 간단히 노출 */}
+                  {confidenceReasons.length > 0 && (
+                    <div className="mb-4 flex flex-wrap gap-1.5">
+                      {confidenceReasons.slice(0, 3).map((reason, idx) => (
+                        <span
+                          key={`${reason}-${idx}`}
+                          className="inline-flex items-center px-2 py-0.5 rounded-full bg-[rgba(15,23,42,0.9)] border border-[rgba(148,163,184,0.4)] text-[10px] text-[#E5E7EB]"
+                        >
+                          {reason}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   {/* 적정 행동 */}
                   <div className="bg-[#141821] border border-[#2a3142] rounded-lg p-4">
                     <p className="text-sm font-medium text-white mb-2">적정 행동</p>
-                    <p className="text-sm text-[#a0aec0] mb-3">{aiConclusion.recommendation}</p>
+                    <p className="text-sm text-[#a0aec0] mb-3">{displayActionText}</p>
                     <div className="pt-3 border-t border-[#2a3142]">
                       <p className="text-xs text-[#00E5A8]">
                         데이터 기반 예상 기간: <span className="font-medium">{aiConclusion.period}</span>
@@ -3090,13 +3410,498 @@ export default function SymbolDetailPage() {
                     </div>
                   </div>
 
+                  {/* 프리미엄 전략 플랜 & 계좌 기준 요약 */}
+                  {(() => {
+                    const strategyPlans = buildStrategyPlans()
+                    if (!strategyPlans) return null
+
+                    const { currentPrice, stopLossPrice, plans, selectedPlan, accountView, backtestSummary } = strategyPlans
+
+                    return (
+                      <div className="mt-5 space-y-4">
+                        {/* 전략 플랜 다단계 (보수형/기본형/공격형)
+                            - 모바일: 선택된 플랜 요약만, 데스크톱: 전체 테이블 */}
+                        <div className="bg-[#141821] border border-[#2a3142] rounded-lg p-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                            <div>
+                              <p className="text-xs text-[#8b95a5] mb-1">전략 플랜</p>
+                              <p className="text-sm font-semibold text-white">보수형 · 기본형 · 공격형 비교</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {plans.map(plan => (
+                                <button
+                                  key={plan.id}
+                                  type="button"
+                                  onClick={() => setRiskProfile(plan.id)}
+                                  className={`px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                                    riskProfile === plan.id
+                                      ? 'bg-[#00E5A8] text-black border-[#00E5A8]'
+                                      : 'bg-[#111827] text-[#CFCFCF] border-[#2a3142] hover:border-[#4b5563]'
+                                  }`}
+                                >
+                                  {plan.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 데스크톱: 전체 비교 테이블 */}
+                          <div className="hidden sm:block overflow-x-auto">
+                            <table className="min-w-full text-[10px] sm:text-xs text-[#CFCFCF]">
+                              <thead>
+                                <tr className="border-b border-[#2a3142]">
+                                  <th className="py-1.5 pr-2 text-left font-semibold text-[#8b95a5]">플랜</th>
+                                  <th className="py-1.5 px-2 text-right font-semibold text-[#8b95a5]">1차 진입</th>
+                                  <th className="py-1.5 px-2 text-right font-semibold text-[#8b95a5]">추가 진입</th>
+                                  <th className="py-1.5 px-2 text-right font-semibold text-[#8b95a5]">손절 폭</th>
+                                  <th className="py-1.5 pl-2 text-right font-semibold text-[#8b95a5]">
+                                    과거 성과 (데이터 기반)
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {plans.map(plan => (
+                                  <tr
+                                    key={plan.id}
+                                    className={`border-t border-[#111827] ${
+                                      riskProfile === plan.id ? 'bg-[rgba(0,229,168,0.04)]' : ''
+                                    }`}
+                                  >
+                                    <td className="py-1.5 pr-2 text-left font-semibold text-white">
+                                      {plan.name}
+                                      {plan.id === riskProfile && (
+                                        <span className="ml-1.5 text-[9px] text-[#00E5A8] align-middle">
+                                          (선택)
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="py-1.5 px-2 text-right">
+                                      {plan.entryRatio}% 진입
+                                    </td>
+                                    <td className="py-1.5 px-2 text-right">
+                                      {plan.addRatio}% 추가
+                                    </td>
+                                    <td className="py-1.5 px-2 text-right text-[#FF4D4D]">
+                                      {plan.stopLossPct.toFixed(1)}%
+                                    </td>
+                                    <td className="py-1.5 pl-2 text-right text-[#00E5A8]">
+                                      {plan.expectedMin != null && plan.expectedMax != null
+                                        ? `+${plan.expectedMin.toFixed(1)}~${plan.expectedMax.toFixed(1)}%`
+                                        : '데이터 축적 중'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* 모바일: 선택된 플랜 요약 카드 */}
+                          <div className="block sm:hidden mt-2 text-[11px] text-[#CFCFCF]">
+                            <div className="bg-[#020617] border border-[#2a3142] rounded-md p-3 space-y-1.5">
+                              <p className="text-xs font-semibold text-white">
+                                {selectedPlan.name} 플랜 요약
+                              </p>
+                              <p>
+                                1차 진입{' '}
+                                <span className="font-semibold text-[#00E5A8]">
+                                  {selectedPlan.entryRatio}%
+                                </span>
+                                , 추가 진입 {selectedPlan.addRatio}% / 손절{' '}
+                                <span className="font-semibold text-[#F87171]">
+                                  {selectedPlan.stopLossPct.toFixed(1)}%
+                                </span>
+                              </p>
+                              {selectedPlan.expectedMin != null &&
+                                selectedPlan.expectedMax != null && (
+                                  <p>
+                                    과거 성과 구간{' '}
+                                    <span className="font-semibold text-[#00E5A8]">
+                                      +{selectedPlan.expectedMin.toFixed(1)}~
+                                      {selectedPlan.expectedMax.toFixed(1)}%
+                                    </span>
+                                  </p>
+                                )}
+                            </div>
+                          </div>
+
+                          {/* 백테스트 인사이트 한 줄 */}
+                          {backtestSummary && (
+                            <div className="mt-3 pt-3 border-t border-[#2a3142]">
+                              <p className="text-[10px] sm:text-xs text-[#8b95a5]">
+                                이와 비슷한 세팅 {backtestSummary.totalCases}건 중{' '}
+                                <span className="text-[#00E5A8] font-semibold">
+                                  성공률 {backtestSummary.successRate}%
+                                </span>
+                                , 평균 수익{' '}
+                                <span className={backtestSummary.avgReturn >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}>
+                                  {backtestSummary.avgReturn >= 0 ? '+' : ''}
+                                  {backtestSummary.avgReturn}%
+                                </span>
+                                , 최대 낙폭{' '}
+                                <span className="text-[#FF4D4D]">
+                                  {backtestSummary.maxDrawdown}%
+                                </span>{' '}
+                                → 신뢰도{' '}
+                                <span className="font-semibold">
+                                  {backtestSummary.successRate >= 70
+                                    ? '높음'
+                                    : backtestSummary.successRate >= 50
+                                    ? '중상'
+                                    : '보통 이하'}
+                                </span>
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 2단계/3단계: 자산 기준 커스터마이징 + 오늘 액션 체크리스트 + 시나리오 표 */}
+                        <div className="bg-[#141821] border border-[#2a3142] rounded-lg p-4 space-y-4">
+                          {/* 자산 입력 */}
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#00E5A8] text-[11px] font-bold text-black">
+                                2
+                              </span>
+                              <p className="text-xs text-[#8b95a5]">내 계좌 기준 설정</p>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <div>
+                                <label className="block text-[10px] text-[#8b95a5] mb-1">총 투자자산 (원)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  className="w-full bg-[#0f172a] border border-[#2a3142] rounded-md px-2 py-1.5 text-xs text-[#e5e7eb] focus:outline-none focus:ring-1 focus:ring-[#00E5A8]"
+                                  value={userCapital ?? ''}
+                                  onChange={e =>
+                                    setUserCapital(e.target.value ? Number(e.target.value) : null)
+                                  }
+                                  placeholder="예: 10000000"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-[#8b95a5] mb-1">
+                                  이번 종목 최대 배분 (%)
+                                </label>
+                                <input
+                                  type="number"
+                                  min={5}
+                                  max={100}
+                                  className="w-full bg-[#0f172a] border border-[#2a3142] rounded-md px-2 py-1.5 text-xs text-[#e5e7eb] focus:outline-none focus:ring-1 focus:ring-[#00E5A8]"
+                                  value={symbolAllocationPct}
+                                  onChange={e =>
+                                    setSymbolAllocationPct(
+                                      Math.min(100, Math.max(5, Number(e.target.value) || 0)),
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="block text-[10px] text-[#8b95a5] mb-1">리스크 성향</span>
+                                <div className="flex gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setRiskProfile('conservative')}
+                                    className={`flex-1 px-1.5 py-1 rounded-full text-[10px] border ${
+                                      riskProfile === 'conservative'
+                                        ? 'bg-[#111827] text-[#CFCFCF] border-[#00E5A8]'
+                                        : 'bg-[#020617] text-[#6b7280] border-[#1f2937]'
+                                    }`}
+                                  >
+                                    보수형
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setRiskProfile('basic')}
+                                    className={`flex-1 px-1.5 py-1 rounded-full text-[10px] border ${
+                                      riskProfile === 'basic'
+                                        ? 'bg-[#111827] text-[#CFCFCF] border-[#00E5A8]'
+                                        : 'bg-[#020617] text-[#6b7280] border-[#1f2937]'
+                                    }`}
+                                  >
+                                    기본형
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setRiskProfile('aggressive')}
+                                    className={`flex-1 px-1.5 py-1 rounded-full text-[10px] border ${
+                                      riskProfile === 'aggressive'
+                                        ? 'bg-[#111827] text-[#CFCFCF] border-[#00E5A8]'
+                                        : 'bg-[#020617] text-[#6b7280] border-[#1f2937]'
+                                    }`}
+                                  >
+                                    공격형
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 계좌 기준 수치 요약 */}
+                          {accountView && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] sm:text-xs text-[#CFCFCF]">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] text-[#8b95a5]">계좌 기준 포지션 규모</p>
+                                <p>
+                                  총 투자자산{' '}
+                                  <span className="font-semibold text-white">
+                                    {userCapital?.toLocaleString()}원
+                                  </span>{' '}
+                                  중{' '}
+                                  <span className="font-semibold text-[#00E5A8]">
+                                    {symbolAllocationPct}% ({accountView.totalAllocation.toLocaleString()}원)
+                                  </span>{' '}
+                                  배분
+                                </p>
+                                <p>
+                                  1차 진입:{' '}
+                                  <span className="font-semibold text-white">
+                                    {selectedPlan.entryRatio}% (
+                                    {accountView.firstEntryAmount.toLocaleString()}원)
+                                  </span>
+                                </p>
+                                <p>
+                                  추가 진입:{' '}
+                                  <span className="font-semibold text-white">
+                                    {selectedPlan.addRatio}% (
+                                    {accountView.additionalEntryAmount.toLocaleString()}원)
+                                  </span>
+                                </p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] text-[#8b95a5]">최대 손실 한도</p>
+                                <p>
+                                  손절가{' '}
+                                  <span className="font-semibold text-[#FF4D4D]">
+                                    {stopLossPrice.toLocaleString()}원
+                                  </span>
+                                  {' '}기준,
+                                </p>
+                                <p>
+                                  이번 전략에서 감수하는 최대 손실은{' '}
+                                  <span className="font-semibold text-[#FF4D4D]">
+                                    {accountView.maxLossAmount.toLocaleString()}원
+                                  </span>{' '}
+                                  (
+                                  <span className="font-semibold">
+                                    계좌 대비 {accountView.maxLossAccountPct}%
+                                  </span>
+                                  ) 수준입니다.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 오늘 기준 액션 체크리스트 & 시나리오 표 */}
+                          <div className="space-y-3">
+                            {/* Do / Don't / Wait */}
+                            <div>
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#00E5A8] text-[11px] font-bold text-black">
+                                  3
+                                </span>
+                                <p className="text-xs text-[#8b95a5]">오늘 기준 액션 체크리스트</p>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] sm:text-xs">
+                                <div className="bg-[#020617] border border-[#1f2937] rounded-md p-2">
+                                  <p className="text-[10px] font-semibold text-[#00E5A8] mb-1">Do</p>
+                                  <p className="text-[#e5e7eb]">
+                                    {userCapital && accountView ? (
+                                      <>
+                                        {currentPrice.toLocaleString()}±0.5% 구간에서{' '}
+                                        <span className="font-semibold">
+                                          {selectedPlan.entryRatio}% (
+                                          {accountView.firstEntryAmount.toLocaleString()}원)
+                                        </span>{' '}
+                                        첫 진입, 손절가{' '}
+                                        <span className="font-semibold text-[#FF4D4D]">
+                                          {stopLossPrice.toLocaleString()}원
+                                        </span>{' '}
+                                        지정
+                                      </>
+                                    ) : (
+                                      <>
+                                        {currentPrice.toLocaleString()}±0.5% 구간에서{' '}
+                                        {selectedPlan.entryRatio}% 첫 진입, 손절가{' '}
+                                        {stopLossPrice.toLocaleString()}원 지정
+                                      </>
+                                    )}
+                                  </p>
+                                </div>
+                                <div className="bg-[#020617] border border-[#1f2937] rounded-md p-2">
+                                  <p className="text-[10px] font-semibold text-[#FF4D4D] mb-1">Don&apos;t</p>
+                                  <p className="text-[#e5e7eb]">
+                                    <span className="font-semibold text-[#FF4D4D]">
+                                      {stopLossPrice.toLocaleString()}원
+                                    </span>
+                                    {' '}하회 상태에서 추가 매수(물타기){' '}
+                                    <span className="font-semibold">금지</span>
+                                  </p>
+                                </div>
+                                <div className="bg-[#020617] border border-[#1f2937] rounded-md p-2">
+                                  <p className="text-[10px] font-semibold text-[#FBBF24] mb-1">Wait</p>
+                                  <p className="text-[#e5e7eb]">
+                                    MACD가 0선 위로 재진입하거나, 거래량이 평균 이상으로 동반되기 전까지{' '}
+                                    <span className="font-semibold">추가 진입 보류</span>
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 3단계: 최선/기준/최악 시나리오 - 접을 수 있는 상세 영역 */}
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() => setShowScenarioDetails(prev => !prev)}
+                                className="w-full flex items-center justify-between text-xs text-[#8b95a5] mb-1.5 hover:text-[#E5E7EB] transition-colors"
+                              >
+                                <span>시나리오별 결과 가이드</span>
+                                <span className="text-[10px] text-[#6b7280]">
+                                  {showScenarioDetails ? '상세 접기 ▲' : '상세 보기 ▼'}
+                                </span>
+                              </button>
+                              {showScenarioDetails && (
+                              <div className="overflow-x-auto">
+                                <table className="min-w-full text-[10px] sm:text-xs text-[#CFCFCF]">
+                                  <thead>
+                                    <tr className="border-b border-[#2a3142]">
+                                      <th className="py-1.5 pr-2 text-left font-semibold text-[#8b95a5]">
+                                        시나리오
+                                      </th>
+                                      <th className="py-1.5 px-2 text-left font-semibold text-[#8b95a5]">
+                                        가격 / 조건
+                                      </th>
+                                      <th className="py-1.5 px-2 text-left font-semibold text-[#8b95a5]">
+                                        행동
+                                      </th>
+                                      <th className="py-1.5 px-2 text-right font-semibold text-[#8b95a5]">
+                                        발생 비율(과거)
+                                      </th>
+                                      <th className="py-1.5 pl-2 text-right font-semibold text-[#8b95a5]">
+                                        계좌 영향 (대략)
+                                      </th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    <tr className="border-t border-[#111827]">
+                                      <td className="py-1.5 pr-2 text-left font-semibold text-[#00E5A8]">
+                                        최선
+                                      </td>
+                                      <td className="py-1.5 px-2 text-left">
+                                        2차 목표가(예: 2차 목표 영역 도달) 부근 안착
+                                      </td>
+                                      <td className="py-1.5 px-2 text-left">
+                                        단계적 익절로 수익 확정 후 잔여 물량만 추세 따라가며{' '}
+                                        트레일링 스탑 적용
+                                      </td>
+                                      <td className="py-1.5 px-2 text-right">
+                                        {backtestSummary && backtestSummary.totalCases > 0
+                                          ? `${Math.max(
+                                              10,
+                                              Math.round(backtestSummary.successRate * 0.6),
+                                            )}%`
+                                          : '-'}
+                                      </td>
+                                      <td className="py-1.5 pl-2 text-right">
+                                        {selectedPlan.expectedMax != null && accountView ? (
+                                          <>
+                                            {selectedPlan.expectedMax.toFixed(1)}% 이상 수익 구간{' '}
+                                            {`(≈ ${Math.round(
+                                              (accountView.totalAllocation * selectedPlan.expectedMax) /
+                                                100,
+                                            ).toLocaleString()}원 이익)`}
+                                          </>
+                                        ) : (
+                                          '성과 데이터 축적 중'
+                                        )}
+                                      </td>
+                                    </tr>
+                                    <tr className="border-t border-[#111827]">
+                                      <td className="py-1.5 pr-2 text-left font-semibold text-white">
+                                        기준
+                                      </td>
+                                      <td className="py-1.5 px-2 text-left">
+                                        1차 목표만 도달 후 3~5% 조정
+                                      </td>
+                                      <td className="py-1.5 px-2 text-left">
+                                        1차 구간에서 30~50% 익절, 나머지는 손절가를 상향 조정 후 홀딩
+                                      </td>
+                                      <td className="py-1.5 px-2 text-right">
+                                        {backtestSummary && backtestSummary.totalCases > 0
+                                          ? `${Math.max(
+                                              0,
+                                              Math.min(
+                                                100,
+                                                100 -
+                                                  Math.max(
+                                                    10,
+                                                    Math.round(
+                                                      backtestSummary.successRate * 0.6,
+                                                    ),
+                                                  ) -
+                                                  Math.max(
+                                                    5,
+                                                    Math.round(
+                                                      (100 - backtestSummary.successRate) * 0.4,
+                                                    ),
+                                                  ),
+                                              ),
+                                            )}%`
+                                          : '-'}
+                                      </td>
+                                      <td className="py-1.5 pl-2 text-right">
+                                        {selectedPlan.expectedMin != null &&
+                                        selectedPlan.expectedMax != null
+                                          ? `${selectedPlan.expectedMin.toFixed(
+                                              1,
+                                            )}~${selectedPlan.expectedMax.toFixed(1)}% 수익 구간`
+                                          : '성과 데이터 축적 중'}
+                                      </td>
+                                    </tr>
+                                    <tr className="border-t border-[#111827]">
+                                      <td className="py-1.5 pr-2 text-left font-semibold text-[#FF4D4D]">
+                                        최악
+                                      </td>
+                                      <td className="py-1.5 px-2 text-left">
+                                        손절가({stopLossPrice.toLocaleString()}원) 이탈 및 약세 지표 지속
+                                      </td>
+                                      <td className="py-1.5 px-2 text-left">
+                                        사전에 정한 비율만큼 손절, 동일 종목 재진입은 추세·지표가 회복될 때까지만
+                                        제한적으로 허용
+                                      </td>
+                                      <td className="py-1.5 px-2 text-right text-[#F97373]">
+                                        {backtestSummary && backtestSummary.totalCases > 0
+                                          ? `${Math.max(
+                                              5,
+                                              Math.round(
+                                                (100 - backtestSummary.successRate) * 0.4,
+                                              ),
+                                            )}%`
+                                          : '-'}
+                                      </td>
+                                      <td className="py-1.5 pl-2 text-right">
+                                        {Math.abs(selectedPlan.stopLossPct).toFixed(1)}% 손실 한도{' '}
+                                        {accountView &&
+                                          `(≈ ${accountView.maxLossAmount.toLocaleString()}원 손실)`}
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   {/* AI 기반 스윙 전략 템플릿 */}
                   {(aiConclusion.action === '강력 매수' || aiConclusion.action === '매수' || aiConclusion.action === '관망') ? (() => {
                     const strategy = generateSwingStrategy()
                     if (!strategy) return null
                     
                     return (
-                  <div className="mt-5 pt-5 border-t border-[rgba(255,255,255,0.1)]">
+                      <div className="mt-5 pt-5 border-t border-[rgba(255,255,255,0.1)]">
                         <div className="flex items-center gap-2 mb-4">
                           <svg className="w-5 h-5 text-[#00E5A8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -3126,7 +3931,7 @@ export default function SymbolDetailPage() {
                                   <p className="text-sm font-bold text-white">
                                     {step.day}: {step.title}
                                   </p>
-                          </div>
+                                </div>
                                 
                                 {/* 시나리오별 대응 */}
                                 <div className="ml-9 space-y-2">
@@ -3253,51 +4058,6 @@ export default function SymbolDetailPage() {
                     </div>
                   )}
 
-                </div>
-
-                {/* 상세 AI 분석 리포트 */}
-                <div className="glass-panel rounded-xl p-5 sm:p-6 lg:p-8">
-                  <div className="flex justify-between items-center mb-3 sm:mb-4">
-                    <h2 className="text-xl sm:text-2xl font-bold text-white">AI 분석 리포트</h2>
-                    <div className="text-right">
-                      <span className="text-sm sm:text-base text-[#CFCFCF] font-medium block">
-                        {new Date(aiReport.createdAt).toLocaleString('ko-KR')}
-                      </span>
-                      <span className="text-xs text-gray-400 mt-1 block">
-                        {(() => {
-                          const now = new Date();
-                          const created = new Date(aiReport.createdAt);
-                          const diffMs = now.getTime() - created.getTime();
-                          const diffMins = Math.floor(diffMs / (1000 * 60));
-                          const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-                          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                          
-                          if (diffMins < 1) return '방금 전 분석';
-                          if (diffMins < 60) return `${diffMins}분 전 분석`;
-                          if (diffHours < 24) return `${diffHours}시간 전 분석`;
-                          return `${diffDays}일 전 분석`;
-                        })()}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {/* 면책 문구 */}
-                  <div className="mb-5 sm:mb-6 p-3 sm:p-4 bg-[rgba(255,184,0,0.1)] border border-[rgba(255,184,0,0.3)] rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-[#FFB800] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      <div className="flex-1">
-                        <p className="text-xs sm:text-sm text-[#FFB800] font-semibold mb-1">투자 유의사항</p>
-                        <p className="text-[10px] sm:text-xs text-[#CFCFCF] leading-relaxed">
-                          본 분석은 <span className="text-white font-semibold">스윙/중장기 투자 참고용</span>이며, 투자 권유가 아닙니다. 
-                          <span className="block mt-1">모든 투자 결정과 그에 따른 손익은 투자자 본인의 책임입니다.</span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <AiReportViewer report={aiReport.content || ''} />
                 </div>
 
                 {/* AI 신뢰도 패널 */}

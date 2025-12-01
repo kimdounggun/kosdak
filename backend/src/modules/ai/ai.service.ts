@@ -38,6 +38,148 @@ export class AiService {
   }
 
   /**
+   * 결과 요약 3줄 (추천 → 이유 → 행동)
+   */
+  private buildRecommendationSummary(
+    predictedAction: string,
+    latestCandle: any,
+    latestIndicator: any,
+    investmentPeriod: string,
+    strategy: any,
+  ) {
+    const currentPrice = latestCandle?.close || 0;
+    const rsi = latestIndicator?.rsi;
+    const macd = latestIndicator?.macd;
+    const macdSignal = latestIndicator?.macdSignal;
+
+    // 전략 기반 추천 문구 (entryRatio와 일관성 유지)
+    const phase1 = strategy?.phase1;
+    const entryRatio = phase1?.entryRatio ?? 0;
+
+    let recommendation: string;
+    if (entryRatio >= 40) {
+      recommendation = '강력 매수';
+    } else if (entryRatio >= 25) {
+      recommendation = '매수';
+    } else if (entryRatio > 0) {
+      recommendation = '관망 (소량 진입)';
+    } else {
+      // 전략이 없거나 진입 비율이 0이면 예전 predictedAction 사용
+      recommendation = predictedAction || '관망';
+    }
+
+    // 이유 요약
+    const reasonParts: string[] = [];
+    if (rsi !== undefined) {
+      reasonParts.push(`RSI ${rsi.toFixed(2)}`);
+    }
+    if (macd !== undefined && macdSignal !== undefined) {
+      const macdDir = macd > macdSignal ? 'MACD 상향돌파' : 'MACD 하향돌파';
+      reasonParts.push(macdDir);
+    }
+    const reason =
+      reasonParts.length > 0
+        ? reasonParts.join(' · ')
+        : '주요 기술적 지표 종합 분석';
+
+    // 행동 요약
+    const action = `단기 스윙 (${investmentPeriod === 'swing' ? '3~7일' : investmentPeriod === 'medium' ? '2~4주' : '1~3개월'}) 기준 1일차 ${entryRatio}% 진입 전략 고려 (현재가 ${currentPrice.toLocaleString()}원 기준)`;
+
+    return {
+      recommendation,
+      reason,
+      action,
+    };
+  }
+
+  /**
+   * If-Then 규칙 트리 생성 (조건 → 액션)
+   */
+  private buildIfThenRules(strategy: any) {
+    if (!strategy) return [];
+
+    const rules: any[] = [];
+
+    const phase2 = strategy.phase2 || {};
+    const phase3 = strategy.phase3 || {};
+
+    if (phase2.bullish) {
+      rules.push({
+        phase: '2~3일차',
+        scenario: '상승',
+        if: phase2.bullish.condition,
+        then: phase2.bullish.action,
+        type: 'bullish',
+      });
+    }
+    if (phase2.sideways) {
+      rules.push({
+        phase: '2~3일차',
+        scenario: '횡보',
+        if: phase2.sideways.condition,
+        then: phase2.sideways.action,
+        type: 'sideways',
+      });
+    }
+    if (phase2.bearish) {
+      rules.push({
+        phase: '2~3일차',
+        scenario: '하락',
+        if: phase2.bearish.condition,
+        then: phase2.bearish.action,
+        type: 'bearish',
+      });
+    }
+
+    if (phase3.target1) {
+      rules.push({
+        phase: '5~7일차',
+        scenario: '1차 목표 달성',
+        if: phase3.target1.price,
+        then: phase3.target1.action,
+        type: 'target1',
+      });
+    }
+    if (phase3.target2) {
+      rules.push({
+        phase: '5~7일차',
+        scenario: '2차 목표 달성',
+        if: phase3.target2.price,
+        then: phase3.target2.action,
+        type: 'target2',
+      });
+    }
+
+    return rules;
+  }
+
+  /**
+   * 매수 단가 보정 전략(DCA) 예시 생성
+   * - 실제 유저 자산 연동 전까지는 대표 예시 자산(100만/1,000만) 기준
+   */
+  private buildDcaExamples(
+    entryPrice: number,
+    strategy: any,
+    capitalExamples: number[] = [1_000_000, 10_000_000],
+  ) {
+    const phase1 = strategy?.phase1 || {};
+    const entryRatio = phase1.entryRatio ?? 30;
+
+    const examples = capitalExamples.map((capital) => {
+      const amount = Math.round((capital * entryRatio) / 100);
+      return {
+        capital,
+        entryAmount: amount,
+      };
+    });
+
+    return {
+      entryRatio,
+      examples,
+    };
+  }
+
+  /**
    * 투자 기간에 따라 최적의 timeframe을 반환
    */
   private getOptimalTimeframe(investmentPeriod: string): string {
@@ -332,6 +474,7 @@ export class AiService {
       symbol.code
     );
     const stopLossPrice = adjustedTargets.stopLoss;
+    metadata.stopLossPrice = stopLossPrice;
 
     // 🆕 투자 전략 생성 (프리미엄: AI 기반 상세 전략, 기본: 지표 기반 간단 전략)
     try {
@@ -370,6 +513,39 @@ export class AiService {
         metadata.strategy = basicStrategy;
         metadata.strategyType = 'basic';
       }
+
+      // 1) 결과 요약 3줄 (추천 → 이유 → 행동)
+      metadata.recommendationSummary = this.buildRecommendationSummary(
+        predictedAction,
+        latestCandle,
+        latestIndicator,
+        investmentPeriod,
+        metadata.strategy
+      );
+
+      // 2) If-Then 구조화 (조건 → 액션 트리)
+      metadata.ifThenRules = this.buildIfThenRules(metadata.strategy);
+
+      // 3) 백테스트 요약 (성공률·평균 수익·최대 낙폭)
+      if (historicalContext) {
+        const maxDrawdown =
+          historicalContext.minReturn !== undefined
+            ? Math.min(0, historicalContext.minReturn)
+            : 0;
+        metadata.backtestSummary = {
+          successRate: historicalContext.successRate,
+          avgReturn: historicalContext.avgReturn,
+          maxDrawdown, // 음수(하락률)로 표시
+          totalCases: historicalContext.totalCases,
+        };
+      }
+
+      // 4) 매수 단가 보정 전략 예시 (DCA 예시 금액)
+      metadata.dcaExamples = this.buildDcaExamples(
+        entryPrice,
+        metadata.strategy,
+        [1_000_000, 10_000_000]
+      );
     } catch (error) {
       console.warn('전략 생성 실패:', error.message);
       // Fallback: 기본 전략 생성
@@ -1355,15 +1531,29 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
       const successRate = Math.round((successCases / totalCases) * 100);
 
       const returns = filteredReports
-        .map(r => r.actualOutcome?.priceChangePercent || 0)
-        .filter(r => r !== 0);
+        .map(r => r.actualOutcome?.priceChangePercent)
+        .filter((r): r is number => typeof r === 'number');
 
-      const avgReturn = returns.length > 0 
-        ? parseFloat((returns.reduce((sum, r) => sum + r, 0) / returns.length).toFixed(2))
-        : 0;
+      const avgReturn =
+        returns.length > 0
+          ? parseFloat(
+              (returns.reduce((sum, r) => sum + r, 0) / returns.length).toFixed(2),
+            )
+          : 0;
 
       const maxReturn = returns.length > 0 ? parseFloat(Math.max(...returns).toFixed(2)) : 0;
       const minReturn = returns.length > 0 ? parseFloat(Math.min(...returns).toFixed(2)) : 0;
+
+      // 간단한 분위수(25%, 75%) 계산 – 기대 수익 구간 등에 활용 가능
+      let p25 = 0;
+      let p75 = 0;
+      if (returns.length > 0) {
+        const sorted = [...returns].sort((a, b) => a - b);
+        const idx25 = Math.floor((sorted.length - 1) * 0.25);
+        const idx75 = Math.floor((sorted.length - 1) * 0.75);
+        p25 = parseFloat(sorted[idx25].toFixed(2));
+        p75 = parseFloat(sorted[idx75].toFixed(2));
+      }
 
       // 인사이트 생성
       let insight = '';
@@ -1388,6 +1578,8 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
         avgReturn,
         maxReturn,
         minReturn,
+        p25,
+        p75,
         insight
       };
     } catch (error) {
@@ -1502,6 +1694,35 @@ ${historicalContext ? `[과거 유사 패턴]
       "action": "[매우 구체적 액션, 반드시 비율과 금액 포함, 예: ${targetPrice2.toLocaleString()}원 달성 시 → 포지션의 30% 추가 익절 또는 전량 매도]",
       "exitRatio": [숫자, 30-100 사이],
       "reason": "[근거를 번호로 구분하여 매우 상세히 작성]\\n1) 목표가 도달 의미: 2차 목표가 도달 시 전체 포지션 매도하여 수익 실현.\\n2) 시장 상황 고려: 목표가 도달 후 시장의 하락 신호가 나타날 경우 추가 손실 방지."
+    }
+  },
+  "riskPlans": {
+    "conservative": {
+      "name": "보수형",
+      "entryRatio": [숫자, 15-35 사이, 리스크를 가장 낮게 설정],
+      "addRatio": [숫자, 15-30 사이, 추가 진입 비율],
+      "stopLossPercent": [숫자, -8에서 -2 사이, 손실 한도를 보수적으로 설정],
+      "expectedReturnMin": [숫자, 1-3 사이, 기대 최소 수익률(%)],
+      "expectedReturnMax": [숫자, expectedReturnMin 이상, 기대 최대 수익률(%)],
+      "comment": "계좌 변동성을 최소화하는 보수형 전략 (느리지만 안정적인 수익 지향)"
+    },
+    "basic": {
+      "name": "기본형",
+      "entryRatio": [숫자, 25-50 사이, 현재 phase1.entryRatio를 중심으로 설정],
+      "addRatio": [숫자, 20-40 사이, 추가 진입 비율],
+      "stopLossPercent": [숫자, -7에서 -3 사이, 중간 수준 리스크],
+      "expectedReturnMin": [숫자, 2-5 사이, 기대 최소 수익률(%)],
+      "expectedReturnMax": [숫자, expectedReturnMin 이상, 기대 최대 수익률(%)],
+      "comment": "현재 기술적·과거 패턴을 기준으로 한 균형 잡힌 기본 전략"
+    },
+    "aggressive": {
+      "name": "공격형",
+      "entryRatio": [숫자, 40-70 사이, 초기 진입 비율을 가장 크게 설정],
+      "addRatio": [숫자, 20-40 사이, 강한 추세 시 추가 진입],
+      "stopLossPercent": [숫자, -10에서 -5 사이, 손실 허용 폭을 가장 크게 설정],
+      "expectedReturnMin": [숫자, 3-7 사이, 기대 최소 수익률(%)],
+      "expectedReturnMax": [숫자, expectedReturnMin 이상, 기대 최대 수익률(%)],
+      "comment": "변동성을 감수하고 수익을 극대화하려는 공격적인 전략"
     }
   }
 }
