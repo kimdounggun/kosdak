@@ -12,6 +12,7 @@ import AiTrustPanel from '@/components/Dashboard/AiTrustPanel'
 import AiHistoryPanel from '@/components/Dashboard/AiHistoryPanel'
 import LoadingSpinner from '@/components/common/LoadingSpinner'
 import { Sparkles, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react'
+import { getFallbackTargets } from '@/config/trading-strategy.config'
 
 // 프로덕션 환경 체크
 const isDev = process.env.NODE_ENV === 'development'
@@ -1226,10 +1227,11 @@ export default function SymbolDetailPage() {
         }
       }
       
-      // Fallback: AI 전략이 없을 때 (호환성 유지)
-      const targetPrice1 = aiStrategy?.target1 || currentPrice * 1.05
-      const targetPrice2 = aiStrategy?.target2 || currentPrice * 1.12
-      const stopLoss = currentPrice * 0.92
+      // Fallback: AI 전략이 없을 때 (설정 파일 사용, 백엔드와 일치)
+      const fallbackTargets = getFallbackTargets('medium', currentPrice)
+      const targetPrice1 = aiStrategy?.target1 || fallbackTargets.target1
+      const targetPrice2 = aiStrategy?.target2 || fallbackTargets.target2
+      const stopLoss = fallbackTargets.stopLoss
       const sidewaysRange = { low: currentPrice * 0.97, high: currentPrice * 1.03 }
       
       return {

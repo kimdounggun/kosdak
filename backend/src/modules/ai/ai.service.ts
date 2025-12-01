@@ -7,6 +7,18 @@ import { AiReport, AiReportDocument } from '../../schemas/ai-report.schema';
 import { CandlesService } from '../candles/candles.service';
 import { IndicatorsService } from '../indicators/indicators.service';
 import { SymbolsService } from '../symbols/symbols.service';
+import { 
+  TRADING_STRATEGY_CONFIG, 
+  getAdjustedTargets, 
+  getFallbackTargets,
+  getVolatilityLevel 
+} from '../../config/trading-strategy.config';
+import { 
+  CONFIDENCE_CONFIG, 
+  getAdjustedWeights, 
+  getMarketCondition 
+} from '../../config/confidence.config';
+import { getValidUntil } from '../../config/report-validity.config';
 
 @Injectable()
 export class AiService {
@@ -67,10 +79,16 @@ export class AiService {
     const latestCandle = candles[0];
     const latestIndicator = indicators.length > 0 ? indicators[0] : null;
 
+    // 변동성 레벨 계산 (신뢰도 계산과 목표가 계산에 사용)
+    const bbWidth = latestIndicator?.bbUpper && latestIndicator?.bbLower && latestCandle
+      ? (latestIndicator.bbUpper - latestIndicator.bbLower) / latestCandle.close
+      : null;
+    const volatilityLevel = getVolatilityLevel(bbWidth);
+
     // 🆕 과거 유사 패턴 분석 (백테스팅 데이터 활용)
     const historicalContext = await this.getHistoricalContext(symbolId, latestIndicator);
 
-    const prompt = this.buildPrompt(symbol, candles, indicators, reportType, investmentPeriod, historicalContext);
+    const prompt = this.buildPrompt(symbol, candles, indicators, reportType, investmentPeriod, historicalContext, volatilityLevel);
 
     let content = '';
     let metadata: any = {
@@ -142,7 +160,7 @@ export class AiService {
             },
           ],
           temperature: 0.5,
-          max_tokens: 1500,
+          max_tokens: 800, // 1~4번 섹션만 간단히, 최대 500자로 제한
         });
 
         content = completion.choices[0].message.content || '';
@@ -154,47 +172,50 @@ export class AiService {
         metadata.tokensUsed = completion.usage?.total_tokens || 0;
         metadata.processingTimeMs = Date.now() - startTime;
 
-        // 🆕 AI 신뢰도 계산 (대형 플랫폼 방식: 백테스팅 기반)
-        let confidenceScore = 0.5; // 기본 50%
+        // 🆕 AI 신뢰도 계산 (설정 파일 기반)
+        let confidenceScore = CONFIDENCE_CONFIG.base;
         
-        // ⭐ 1. 과거 예측 정확도 (최대 +30%, 가장 중요!)
-        // Bloomberg/TradingView 방식: 실제 성과 기반
+        // 시장 상황 판단
+        const marketCondition = getMarketCondition(bbWidth || 0);
+        const weights = getAdjustedWeights(marketCondition);
+        
+        // ⭐ 1. 과거 예측 정확도 (설정 파일에서 가중치 로드)
         if (historicalContext && historicalContext.totalCases >= 5) {
           const historicalAccuracy = historicalContext.successRate / 100;
-          confidenceScore += historicalAccuracy * 0.3; // 성공률 70% → +21%
+          confidenceScore += historicalAccuracy * weights.historicalAccuracy;
           
           // 샘플 수가 많을수록 신뢰도 증가
-          if (historicalContext.totalCases >= 20) {
-            confidenceScore += 0.05; // 충분한 샘플
+          if (historicalContext.totalCases >= CONFIDENCE_CONFIG.thresholds.sampleSize.bonus) {
+            confidenceScore += weights.sampleSizeBonus;
           }
         }
         
-        // 2. 데이터 품질 (최대 +15%)
+        // 2. 데이터 품질 (설정 파일에서 가중치 로드)
         if (candles.length >= 100) {
-          confidenceScore += 0.15;
+          confidenceScore += weights.dataQuality.high;
         } else if (candles.length >= 50) {
-          confidenceScore += 0.08;
+          confidenceScore += weights.dataQuality.medium;
         }
         
-        // 3. 지표 일치도 (최대 +15%)
-        // Google Gemini 방식: 여러 신호의 합의
+        // 3. 지표 일치도 (설정 파일에서 가중치 로드)
         if (latestIndicator) {
           let agreementCount = 0;
           let totalSignals = 0;
           
-          // RSI 신호
+          // RSI 신호 (설정 파일에서 임계값 로드)
           if (latestIndicator.rsi) {
             totalSignals++;
-            if (latestIndicator.rsi > 70 || latestIndicator.rsi < 30) {
-              agreementCount++; // 명확한 신호
+            if (latestIndicator.rsi > CONFIDENCE_CONFIG.thresholds.rsi.overbought || 
+                latestIndicator.rsi < CONFIDENCE_CONFIG.thresholds.rsi.oversold) {
+              agreementCount++;
             }
           }
           
-          // MACD 신호
+          // MACD 신호 (설정 파일에서 임계값 로드)
           if (latestIndicator.macd !== undefined && latestIndicator.macdSignal !== undefined) {
             totalSignals++;
-            if (Math.abs(latestIndicator.macd - latestIndicator.macdSignal) > 50) {
-              agreementCount++; // 명확한 크로스오버
+            if (Math.abs(latestIndicator.macd - latestIndicator.macdSignal) > CONFIDENCE_CONFIG.thresholds.macd.significant) {
+              agreementCount++;
             }
           }
           
@@ -204,38 +225,38 @@ export class AiService {
             const isAligned = (latestIndicator.ma5 > latestIndicator.ma20 && latestIndicator.ma20 > latestIndicator.ma60) ||
                              (latestIndicator.ma5 < latestIndicator.ma20 && latestIndicator.ma20 < latestIndicator.ma60);
             if (isAligned) {
-              agreementCount++; // 정배열 또는 역배열
+              agreementCount++;
             }
           }
           
           if (totalSignals > 0) {
-            confidenceScore += (agreementCount / totalSignals) * 0.15;
+            confidenceScore += (agreementCount / totalSignals) * weights.indicatorAgreement;
           }
         }
         
-        // 4. 시장 상황 적합성 (최대 +10%)
-        // 거래량 확인 (TradingView 방식)
+        // 4. 시장 상황 적합성 - 거래량 (설정 파일에서 가중치/임계값 로드)
         if (latestIndicator?.volumeRatio) {
-          if (latestIndicator.volumeRatio > 1.5) {
-            confidenceScore += 0.1; // 거래량 급증 (신뢰도 높음)
-          } else if (latestIndicator.volumeRatio > 1.0) {
-            confidenceScore += 0.05; // 거래량 증가
+          if (latestIndicator.volumeRatio > CONFIDENCE_CONFIG.thresholds.volume.surge) {
+            confidenceScore += weights.volume.surge;
+          } else if (latestIndicator.volumeRatio > CONFIDENCE_CONFIG.thresholds.volume.increase) {
+            confidenceScore += weights.volume.increase;
           }
         }
         
-        // 5. 변동성 패널티 (최대 -15%)
-        // 변동성 높으면 예측 어려움
-        if (latestIndicator?.bbUpper && latestIndicator?.bbLower && latestCandle) {
-          const bbWidth = (latestIndicator.bbUpper - latestIndicator.bbLower) / latestCandle.close;
-          if (bbWidth > 0.15) {
-            confidenceScore -= 0.15; // 매우 높은 변동성
-          } else if (bbWidth > 0.1) {
-            confidenceScore -= 0.1; // 높은 변동성
+        // 5. 변동성 패널티 (설정 파일에서 가중치/임계값 로드)
+        if (bbWidth !== null) {
+          if (bbWidth > CONFIDENCE_CONFIG.thresholds.volatility.high) {
+            confidenceScore -= weights.volatility.high;
+          } else if (bbWidth > CONFIDENCE_CONFIG.thresholds.volatility.medium) {
+            confidenceScore -= weights.volatility.medium;
           }
         }
         
-        // 최종 신뢰도 (35~95% 범위)
-        metadata.confidence = Math.min(0.95, Math.max(0.35, confidenceScore));
+        // 최종 신뢰도 (설정 파일에서 범위 로드)
+        metadata.confidence = Math.min(
+          CONFIDENCE_CONFIG.bounds.max, 
+          Math.max(CONFIDENCE_CONFIG.bounds.min, confidenceScore)
+        );
 
         // 가중치 계산
         explainability.factors = this.calculateFactorWeights(latestIndicator, candles);
@@ -276,8 +297,15 @@ export class AiService {
     const target1Match = content.match(/1차 목표가:.*?([\d,]+)원/);
     const target2Match = content.match(/2차 목표가:.*?([\d,]+)원/);
     
-    let targetPrice1 = entryPrice * 1.05; // 기본값 +5%
-    let targetPrice2 = entryPrice * 1.08; // 기본값 +8%
+    // Fallback 목표가 (설정 파일 사용, 변동성 조정 포함)
+    const fallbackTargets = getFallbackTargets(
+      investmentPeriod as 'swing' | 'medium' | 'long',
+      entryPrice,
+      volatilityLevel,
+      symbol.code
+    );
+    let targetPrice1 = fallbackTargets.target1;
+    let targetPrice2 = fallbackTargets.target2;
     
     if (target1Match) {
       targetPrice1 = parseInt(target1Match[1].replace(/,/g, ''));
@@ -296,14 +324,63 @@ export class AiService {
     metadata.targetPercent1 = targetPercent1;
     metadata.targetPercent2 = targetPercent2;
 
-    // 🆕 투자 전략 파싱
+    // 🆕 손절가 계산 (설정 파일 사용, 변동성 조정 포함)
+    const adjustedTargets = getAdjustedTargets(
+      investmentPeriod as 'swing' | 'medium' | 'long',
+      entryPrice,
+      volatilityLevel,
+      symbol.code
+    );
+    const stopLossPrice = adjustedTargets.stopLoss;
+
+    // 🆕 투자 전략 생성 (프리미엄: AI 기반 상세 전략, 기본: 지표 기반 간단 전략)
     try {
-      const strategy = this.parseInvestmentStrategy(content, entryPrice);
-      if (strategy) {
-        metadata.strategy = strategy;
+      // 프리미엄 기능: AI를 활용한 상세 전략 생성
+      const premiumStrategy = await this.generatePremiumStrategy(
+        symbol,
+        latestCandle,
+        latestIndicator,
+        candles,
+        entryPrice,
+        targetPrice1,
+        targetPrice2,
+        stopLossPrice,
+        investmentPeriod as 'swing' | 'medium' | 'long',
+        volatilityLevel,
+        historicalContext,
+        symbol.code
+      );
+      
+      if (premiumStrategy) {
+        metadata.strategy = premiumStrategy;
+        metadata.strategyType = 'premium'; // 프리미엄 전략 표시
+      } else {
+        // Fallback: 기본 전략 생성
+        const basicStrategy = this.generateStrategyFromIndicators(
+          latestCandle,
+          latestIndicator,
+          entryPrice,
+          targetPrice1,
+          targetPrice2,
+          stopLossPrice,
+          investmentPeriod as 'swing' | 'medium' | 'long',
+          volatilityLevel,
+          symbol.code
+        );
+        metadata.strategy = basicStrategy;
+        metadata.strategyType = 'basic';
       }
     } catch (error) {
-      console.warn('전략 파싱 실패:', error.message);
+      console.warn('전략 생성 실패:', error.message);
+      // Fallback: 기본 전략 생성
+      metadata.strategy = this.generateFallbackStrategy(
+        entryPrice,
+        targetPrice1,
+        targetPrice2,
+        stopLossPrice,
+        investmentPeriod as 'swing' | 'medium' | 'long'
+      );
+      metadata.strategyType = 'fallback';
     }
 
     // Save report
@@ -319,7 +396,10 @@ export class AiService {
       rawResponse,
       predictedAction,
       investmentPeriod,
-      validUntil: new Date(Date.now() + 6 * 60 * 60 * 1000), // Valid for 6 hours
+      validUntil: getValidUntil(
+        investmentPeriod as 'swing' | 'medium' | 'long',
+        volatilityLevel
+      ), // 투자 기간과 변동성에 따라 동적 계산
     });
 
     return report.save();
@@ -328,25 +408,39 @@ export class AiService {
   private validateAIResponse(content: string): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
     
-    // 1. 필수 섹션 확인 (5개 섹션: 전략 섹션 포함)
+    // 1. 필수 섹션 확인 (4개 섹션만, 5번 섹션 제거)
     // 이모지가 포함될 수 있으므로 정규식으로 검증
     const requiredSections = [
-      { pattern: /1\.\s+시장\s*포지션/, name: '1. 시장 포지션' },
-      { pattern: /2\.\s+핵심\s*매매\s*시그널/, name: '2. 핵심 매매 시그널' },
-      { pattern: /3\.\s+리스크\s*요인/, name: '3. 리스크 요인' },
-      { pattern: /4\.\s+정량적\s*전망\s*요약/, name: '4. 정량적 전망 요약' },
-      { pattern: /5\.\s+.*맞춤\s*투자\s*전략/, name: '5. 맞춤 투자 전략' }
+      { pattern: /1\.\s+시장\s*포지션/, name: '1. 시장 포지션', required: true },
+      { pattern: /2\.\s+핵심\s*매매\s*시그널/, name: '2. 핵심 매매 시그널', required: true },
+      { pattern: /3\.\s+리스크\s*요인/, name: '3. 리스크 요인', required: true },
+      { pattern: /4\.\s+정량적\s*전망\s*요약/, name: '4. 정량적 전망 요약', required: true },
     ];
     
-    requiredSections.forEach(({ pattern, name }) => {
-      if (!pattern.test(content)) {
+    requiredSections.forEach(({ pattern, name, required }) => {
+      if (required && !pattern.test(content)) {
         errors.push(`필수 섹션 누락: ${name}`);
       }
     });
     
-    // 2. 최소 길이 확인 (너무 짧으면 제대로 된 분석 아님)
-    if (content.length < 200) {
-      errors.push(`응답 길이 부족: ${content.length}자 (최소 200자 필요)`);
+    // 2. 5번 섹션이 있으면 경고 (제거되었어야 함)
+    if (/5\.\s+.*맞춤\s*투자\s*전략/.test(content)) {
+      console.warn('⚠️ 5번 섹션(맞춤 투자 전략)이 AI 리포트에 포함되어 있습니다. 백엔드에서 자동 생성되므로 제거해야 합니다.');
+    }
+    
+    // 3. 최소 길이 확인 (1~4번 섹션 간소화로 매우 짧게)
+    // 각 섹션이 1~2문장이므로 전체적으로 짧아야 함
+    const minLength = 100; // 매우 간단하게
+    
+    if (content.length < minLength) {
+      errors.push(`응답 길이 부족: ${content.length}자 (최소 ${minLength}자 필요)`);
+    }
+    
+    // 4. 최대 길이 확인 (너무 길면 간소화 실패)
+    const maxLength = 500; // 최대 500자로 제한
+    
+    if (content.length > maxLength) {
+      errors.push(`응답이 너무 깁니다: ${content.length}자 (최대 ${maxLength}자). 1~4번 섹션을 더 간단히 작성하세요.`);
     }
     
     return {
@@ -355,7 +449,7 @@ export class AiService {
     };
   }
 
-  private buildPrompt(symbol: any, candles: any[], indicators: any[], reportType: string, investmentPeriod: string = 'swing', historicalContext?: any): string {
+  private buildPrompt(symbol: any, candles: any[], indicators: any[], reportType: string, investmentPeriod: string = 'swing', historicalContext?: any, volatilityLevel: 'high' | 'medium' | 'low' = 'medium'): string {
     // 완성된 캔들 사용 (candles[0]은 진행 중일 수 있음)
     const latest = candles.length > 1 ? candles[1] : candles[0];
     const latestIndicator = indicators[0] || {};
@@ -396,39 +490,46 @@ export class AiService {
     const volumeRatio = latestIndicator.volumeRatio || 1;
     const volumeStatus = volumeRatio > 1.5 ? '급증' : volumeRatio > 1.0 ? '증가' : '감소';
 
-    // 투자 기간별 설명
+    // 투자 기간별 설명 (설정 파일에서 로드)
+    const periodConfig = TRADING_STRATEGY_CONFIG[investmentPeriod] || TRADING_STRATEGY_CONFIG.swing;
     const periodInfo = {
       swing: { 
         name: '단기 스윙', 
         duration: '3~7일', 
-        target: '+3~5%', 
-        stoploss: '-3%',
-        target1Percent: 3,
-        target2Percent: 5
+        target: `+${periodConfig.target1Percent}~${periodConfig.target2Percent}%`, 
+        stoploss: `-${periodConfig.stopLossPercent}%`,
+        target1Percent: periodConfig.target1Percent,
+        target2Percent: periodConfig.target2Percent
       },
       medium: { 
         name: '중기', 
         duration: '2~4주', 
-        target: '+10~12%', 
-        stoploss: '-5%',
-        target1Percent: 10,
-        target2Percent: 12
+        target: `+${TRADING_STRATEGY_CONFIG.medium.target1Percent}~${TRADING_STRATEGY_CONFIG.medium.target2Percent}%`, 
+        stoploss: `-${TRADING_STRATEGY_CONFIG.medium.stopLossPercent}%`,
+        target1Percent: TRADING_STRATEGY_CONFIG.medium.target1Percent,
+        target2Percent: TRADING_STRATEGY_CONFIG.medium.target2Percent
       },
       long: { 
         name: '장기', 
         duration: '1~3개월', 
-        target: '+20~30%', 
-        stoploss: '-8%',
-        target1Percent: 20,
-        target2Percent: 30
+        target: `+${TRADING_STRATEGY_CONFIG.long.target1Percent}~${TRADING_STRATEGY_CONFIG.long.target2Percent}%`, 
+        stoploss: `-${TRADING_STRATEGY_CONFIG.long.stopLossPercent}%`,
+        target1Percent: TRADING_STRATEGY_CONFIG.long.target1Percent,
+        target2Percent: TRADING_STRATEGY_CONFIG.long.target2Percent
       }
     };
     const period = periodInfo[investmentPeriod] || periodInfo.swing;
     
-    // 기간별 목표가 계산
-    const targetPrice1 = currentPrice * (1 + period.target1Percent / 100);
-    const targetPrice2 = currentPrice * (1 + period.target2Percent / 100);
-    const stopLossPrice = currentPrice * (1 + parseFloat(period.stoploss.replace('%', '')) / 100);
+    // 변동성 조정된 목표가 계산 (설정 파일 사용, 이미 위에서 계산된 volatilityLevel 사용)
+    const adjustedTargets = getAdjustedTargets(
+      investmentPeriod as 'swing' | 'medium' | 'long',
+      currentPrice,
+      volatilityLevel,
+      symbol.code
+    );
+    const targetPrice1 = adjustedTargets.target1;
+    const targetPrice2 = adjustedTargets.target2;
+    const stopLossPrice = adjustedTargets.stopLoss;
 
     let prompt = `당신은 금융 트레이딩 분석 모델입니다.
 
@@ -555,148 +656,147 @@ ${historicalContext.insight}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-아래 형식으로 정확히 출력하세요. 리포트는 전문적이고 상세한 분석 중심으로 작성하세요.
+⚠️ 중요: 1~4번 섹션만 작성하세요. 각 섹션은 최대 2문장으로 매우 간단하게 작성하세요.
+5번 섹션(맞춤 투자 전략)은 작성하지 마세요. 백엔드에서 자동으로 생성됩니다.
+
+아래 형식으로 정확히 출력하세요. 핵심만 간단히 요약하세요.
 
 1. 시장 포지션
-위에서 계산한 추세를 그대로 사용하세요.
-현재 추세는 [위에서 계산한 추세: 상승/하락/횡보]이며, 강도는 [약함/중간/강함]입니다. 
-이 추세 판단은 최근 10일간의 가격 움직임을 분석한 결과로, 상승 캔들과 하락 캔들의 비율, 
-가격 변동 폭, 거래량 변화 등을 종합적으로 고려한 것입니다.
-
-현재가는 MA20(${ma20.toFixed(0)}원)을 ${currentPrice > ma20 ? '상회' : '하회'}하고 있으며, 
-MACD는 Signal(${latestIndicator.macdSignal ? latestIndicator.macdSignal.toFixed(2) : 'N/A'})을 
-${latestIndicator.macd && latestIndicator.macdSignal && latestIndicator.macd > latestIndicator.macdSignal ? '상향돌파' : '하향돌파'}한 상태입니다. 
-이러한 기술적 지표의 조합은 시장의 현재 상태와 향후 방향성을 판단하는 중요한 근거가 됩니다.
-
-과거 유사한 패턴을 분석한 결과, 이러한 조건에서 평균적으로 [추세에 따른 예상 기간 및 수익률]을 
-보였던 사례가 많았습니다. 특히 [과거 데이터 기반 인사이트]를 참고할 필요가 있습니다.
+[1~2문장만, 핵심 요약]
+현재 추세: [상승/하락/횡보], 강도: [약함/중간/강함]. 
+현재가 ${currentPrice.toLocaleString()}원, MA20 ${ma20.toFixed(0)}원 ${currentPrice > ma20 ? '상회' : '하회'}, MACD ${latestIndicator.macd && latestIndicator.macdSignal && latestIndicator.macd > latestIndicator.macdSignal ? '상향돌파' : '하향돌파'}.
 
 2. 핵심 매매 시그널
-각 기술적 지표를 상세히 분석하고 해석하세요.
-
-- RSI: ${latestIndicator.rsi ? latestIndicator.rsi.toFixed(2) : 'N/A'} (${rsiStatus})
-  현재 RSI 값은 ${latestIndicator.rsi ? (latestIndicator.rsi > 70 ? '과매수 구간(70 이상)' : latestIndicator.rsi < 30 ? '과매도 구간(30 이하)' : '중립 구간(30~70)') : 'N/A'}에 위치하고 있습니다. 
-  이는 단기적으로 ${latestIndicator.rsi ? (latestIndicator.rsi > 70 ? '조정 압력이 높을 수 있음' : latestIndicator.rsi < 30 ? '반등 가능성이 있음' : '가격 변동성이 낮을 수 있음') : 'N/A'}을 의미합니다. 
-  과거 데이터상 RSI가 이 구간에 있을 때 평균적으로 [예상 움직임]을 보였습니다.
-
-- MACD: ${latestIndicator.macd ? latestIndicator.macd.toFixed(2) : 'N/A'}, Signal: ${latestIndicator.macdSignal ? latestIndicator.macdSignal.toFixed(2) : 'N/A'} 
-  (${macdSignal === '매수' ? '상향돌파, 매수 신호' : macdSignal === '매도' ? '하향돌파, 매도 신호' : 'N/A'})
-  MACD가 Signal을 ${latestIndicator.macd && latestIndicator.macdSignal && latestIndicator.macd > latestIndicator.macdSignal ? '상향돌파' : '하향돌파'}한 것은 
-  단기 모멘텀이 ${latestIndicator.macd && latestIndicator.macdSignal && latestIndicator.macd > latestIndicator.macdSignal ? '강화' : '약화'}되고 있음을 나타냅니다. 
-  이는 과거 데이터에서 ${latestIndicator.macd && latestIndicator.macdSignal && latestIndicator.macd > latestIndicator.macdSignal ? '상승 전환' : '하락 전환'}의 선행 지표로 작용한 경향이 있습니다. 
-  Histogram 값(${(latestIndicator.macd && latestIndicator.macdSignal ? (latestIndicator.macd - latestIndicator.macdSignal).toFixed(2) : 'N/A')})은 
-  모멘텀의 강도를 나타내며, ${latestIndicator.macd && latestIndicator.macdSignal && (latestIndicator.macd - latestIndicator.macdSignal) > 0 ? '증가 추세' : '감소 추세'}를 보이고 있습니다.
-
-- 이동평균선: MA20(${ma20.toFixed(0)}원) ${ma20 > ma60 ? '>' : '<'} MA60(${ma60.toFixed(0)}원) 
-  (${maAlignment})
-  단기 이동평균선과 장기 이동평균선의 관계는 중장기 추세를 판단하는 중요한 지표입니다. 
-  현재 ${maAlignment} 상태는 ${ma5 > ma20 && ma20 > ma60 ? '상승 추세가 지속될 가능성' : ma5 < ma20 && ma20 < ma60 ? '하락 추세가 지속될 가능성' : '추세의 불명확성'}을 시사합니다. 
-  과거 유사한 패턴에서 평균적으로 [예상 기간 및 움직임]을 보였던 사례와 일치합니다. 
-  현재가(${currentPrice.toLocaleString()}원)는 MA20 대비 ${((currentPrice - ma20) / ma20 * 100).toFixed(2)}% ${currentPrice > ma20 ? '높은' : '낮은'} 수준입니다.
+[1~2문장만, 핵심 요약]
+RSI ${latestIndicator.rsi ? latestIndicator.rsi.toFixed(2) : 'N/A'} (${rsiStatus}), MACD ${latestIndicator.macd && latestIndicator.macdSignal && latestIndicator.macd > latestIndicator.macdSignal ? '상향돌파' : '하향돌파'}, 이동평균선 ${maAlignment}. 
+${latestIndicator.macd && latestIndicator.macdSignal && latestIndicator.macd > latestIndicator.macdSignal ? '단기 모멘텀 강화' : '단기 모멘텀 약화'} 신호.
 
 3. 리스크 요인
-현재 시장 상황에서 주의해야 할 리스크 요인을 상세히 분석하세요. 각 리스크는 2~3문장으로 설명하고, 
-과거 유사한 상황에서의 실제 성과 데이터를 참고하여 작성하세요.
-
-1) [첫 번째 리스크 요인]
-   [상세 설명: 왜 리스크인지, 어떤 상황에서 발생할 수 있는지, 과거 사례 등]
-
-2) [두 번째 리스크 요인]
-   [상세 설명: 기술적 지표와의 연관성, 시장 환경과의 관계 등]
-
-3) [세 번째 리스크 요인 (필요시)]
-   [상세 설명: 거래량, 변동성, 외부 요인 등]
+[1~2문장만, 핵심 리스크만]
+주요 리스크: [1개 핵심 리스크만, 예: MACD 하향돌파로 단기 하락 가능성]
 
 4. 정량적 전망 요약
-위의 모든 분석을 종합하여 한 문단으로 요약하세요. 현재 시장 상황, 기술적 지표의 의미, 
-예상되는 향후 움직임, 그리고 투자 시 주의사항을 포함하세요.
-
-[2~3문장으로 상세한 전망과 결론을 제시. 과거 데이터 기반 인사이트를 포함하여 신뢰감 있게 작성]
+[1~2문장만, 핵심 전망만]
+${historicalContext && historicalContext.totalCases > 0 ? `과거 유사 패턴 성공률 ${historicalContext.successRate}% 기준, ` : ''}[간단한 전망과 결론].
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-5. 맞춤 투자 전략 (${period.name})
+⚠️ 5번 섹션(맞춤 투자 전략)은 작성하지 마세요. 백엔드에서 자동으로 생성됩니다.
 
-⚠️ 중요: 이 섹션은 UI에 표시되므로 다음 규칙을 반드시 준수하세요.
+🚨 절대 규칙: 이 섹션은 반드시 아래 정확한 형식으로 작성하세요. 형식이 다르면 파싱 오류가 발생합니다.
 
 📌 ${period.name} 전략 특성:
 ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청산\n- 3~7일 내 목표 달성 목표\n- 단기 기술적 지표 중심 판단' : investmentPeriod === 'medium' ? '- 중기 추세 추종 전략\n- 2~4주 내 추세 확인 후 진입\n- 중기 이동평균선과 추세선 활용' : '- 장기 성장 기대 전략\n- 1~3개월 저점 분할 매수\n- 장기 이동평균선과 펀더멘털 고려'}
 
-1. 설명 길이: 모든 설명은 정확히 1문장으로 작성 (너무 길거나 짧지 않게)
-2. 구체적 정보: 모든 근거에는 반드시 구체적 지표명과 수치 포함 (예: "RSI 55", "MACD 상향돌파", "MA20 14,584원")
-3. 가격 정보: 모든 액션에는 가격 정보 포함 (예: "${targetPrice1.toLocaleString()}원 돌파 시 → 추가 30% 매수")
-4. 손절가 표시: 1일차/1주차에 반드시 손절가 정보 포함 (UI에 표시됨) - ${period.name} 전략 손절가: ${stopLossPrice.toLocaleString()}원 (${period.stoploss})
-5. 액션 명확화: "손절 준비" 같은 모호한 표현 금지, 구체적 액션 명시 (예: "포지션의 50% 청산")
-6. 수익/손실 정보: 목표 달성 시 수익률, 손절 시 손실률 명시
-7. 기간별 목표: ${period.name} 전략의 목표는 1차 ${targetPrice1.toLocaleString()}원 (+${period.target1Percent}%), 2차 ${targetPrice2.toLocaleString()}원 (+${period.target2Percent}%)입니다.
+⚠️ 필수 작성 규칙:
+1. 모든 필드는 정확히 아래 형식으로 작성 (라벨과 콜론(:) 필수)
+2. 진입비율은 반드시 "진입비율: [숫자]%" 형식 (예: "진입비율: 40%")
+3. 진입타이밍은 반드시 "진입타이밍: [내용]" 형식
+4. 손절가는 반드시 "손절가: [가격]원 ([비율])" 형식
+5. 각 시나리오는 반드시 "상승 시나리오:", "횡보 시나리오:", "하락 시나리오:" 라벨 사용
+6. 목표 달성은 반드시 "1차 목표 달성 시:", "2차 목표 달성 시:" 라벨 사용
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 [1일차 또는 1주차: 초기 진입]
-진입비율: [숫자만, 예: 40]% (시드의 [숫자]%)
+진입비율: [숫자만, 예: 40]%
 진입타이밍: [1문장으로 간결하게, 예: 현재가 ${currentPrice.toLocaleString()}원 부근에서 분할 진입]
-근거: [각 근거는 정확히 1문장으로 작성, 반드시 구체적 지표명과 수치 포함]
+근거:
 1) 기술적: [구체적 지표명과 수치, 판단을 1문장으로, 예: RSI ${latestIndicator.rsi ? latestIndicator.rsi.toFixed(2) : 'N/A'} 상승 + MACD Signal 상향돌파로 매수 신호]
 2) 추세: [현재 추세와 구체적 수치를 1문장으로, 예: 현재가가 MA20(${ma20.toFixed(0)}원) 상회로 단기 상승 가능성 존재]
 3) 지지/저항: [구체적 가격대와 의미를 1문장으로, 예: ${(currentPrice * 1.02).toLocaleString()}원 저항선과 ${(currentPrice * 0.98).toLocaleString()}원 지지선 사이 박스권 형성]
 4) 거래량: [거래량 상태와 의미를 1문장으로, 예: 거래량 증가 시 모멘텀 강화 가능]
 
-⚠️ 중요: 손절가 정보는 반드시 포함하세요. UI에 표시됩니다.
-⚠️ ${period.name} 전략의 손절가는 ${stopLossPrice.toLocaleString()}원 (${period.stoploss})입니다.
 손절가: ${stopLossPrice.toLocaleString()}원 (${period.stoploss})
 손절타이밍: [1문장으로 간결하게, 예: 현재가가 손절가 하회 시 또는 MACD 지속 하락 시]
-손절사유: [각 사유는 정확히 1문장으로 작성]
+손절사유:
 1) [하락 가능성과 리스크를 1문장으로, 예: 기술적 지표 약세로 추가 하락 가능성 존재]
 2) [손실 확대 위험을 1문장으로, 예: 시장 방향성 불명확으로 손실 확대 위험]
 3) [재진입 고려사항을 1문장으로, 예: 재진입은 MACD 상승세 전환 시 고려]
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 [2~3일차 또는 2~3주차: 상황별 대응]
 
-⚠️ 중요: 각 시나리오의 액션에는 반드시 가격 정보를 포함하세요. 
-⚠️ ${period.name} 전략에 맞는 목표가를 사용하세요: 1차 목표 ${targetPrice1.toLocaleString()}원 (+${period.target1Percent}%), 2차 목표 ${targetPrice2.toLocaleString()}원 (+${period.target2Percent}%)
+⚠️ 절대 규칙: 이 섹션은 "추가 진입" 또는 "포지션 조정"을 위한 것입니다. 목표가 달성은 5~7일차 섹션에서만 다룹니다.
+
+📊 참고 가격 (AI 판단 시 참고만 하세요):
+- 현재가: ${currentPrice.toLocaleString()}원
+- 1차 목표가: ${targetPrice1.toLocaleString()}원 (+${period.target1Percent}%) - ⚠️ 이 가격은 5~7일차 익절용입니다. 2~3일차에서는 사용 금지!
+- 2차 목표가: ${targetPrice2.toLocaleString()}원 (+${period.target2Percent}%) - ⚠️ 이 가격은 5~7일차 익절용입니다. 2~3일차에서는 사용 금지!
+- 손절가: ${stopLossPrice.toLocaleString()}원 (${period.stoploss})
+
+🚨 절대 금지 사항:
+1. 2~3일차 상승 시나리오의 조건 가격으로 1차 목표가(${targetPrice1.toLocaleString()}원)를 사용하면 안 됩니다!
+2. 2~3일차는 "추가 진입" 단계이므로, 1차 목표가보다 낮은 중간 가격을 사용해야 합니다.
+3. 예: 현재가 ${currentPrice.toLocaleString()}원, 1차 목표 ${targetPrice1.toLocaleString()}원이라면, 추가 진입은 ${((currentPrice + targetPrice1) / 2).toLocaleString()}원 또는 그보다 낮은 가격을 사용하세요.
+
+💡 AI 판단 가이드:
+- 상승 시나리오: 현재가와 1차 목표가 사이의 중간 가격대에서 추가 진입 조건 설정
+- AI가 시장 상황을 분석하여 더 적절한 가격을 결정할 수 있지만, 반드시 1차 목표가보다 낮아야 함
+- 기술적 지표(저항선, 지지선, 이동평균선 등)를 고려하여 최적의 추가 진입 가격 결정
 
 상승 시나리오:
-조건: [구체적 가격, 예: ${targetPrice1.toLocaleString()}원 돌파] AND [구체적 지표 조건, 예: RSI 55 이상]
-액션: [가격 정보 포함, 예: ${targetPrice1.toLocaleString()}원 돌파 시 → 시드의 [숫자]% 추가 진입]
-근거: [각 근거는 정확히 1문장으로 작성, 설명 길이 통일]
-1) [가격 상승 의미를 1문장으로, 예: 가격 상승은 추세 전환 신호로 해석 가능]
-2) [지표 개선 의미를 1문장으로, 예: 지표 개선은 모멘텀 강화의 의미]
-3) [과거 패턴 참고를 1문장으로, 예: 과거 유사 패턴에서 상승 지속 가능성 높음]
+조건: [AI가 판단한 구체적 가격과 지표 조건, 반드시 ${targetPrice1.toLocaleString()}원보다 낮은 가격 사용, 예: ${((currentPrice + targetPrice1) / 2).toLocaleString()}원 돌파 AND RSI 55 이상] 
+🚨 검증: 조건 가격이 ${targetPrice1.toLocaleString()}원보다 낮은지 확인하세요! 같거나 높으면 안 됩니다!
+액션: [가격 정보 포함, 예: [조건 가격]원 돌파 시 → 시드의 [숫자]% 추가 진입]
+근거:
+1) [가격 상승 의미를 1문장으로, AI가 분석한 이유]
+2) [지표 개선 의미를 1문장으로, AI가 분석한 이유]
+3) [과거 패턴 참고를 1문장으로, AI가 분석한 이유]
 
 횡보 시나리오:
-조건: [가격 범위, 예: ${(currentPrice * 0.98).toLocaleString()}원 ~ ${(currentPrice * 1.02).toLocaleString()}원] 박스권 [기간, 예: 3일] 이상
-액션: [가격 범위 포함, 예: ${(currentPrice * 0.98).toLocaleString()}원 ~ ${(currentPrice * 1.02).toLocaleString()}원 박스권 유지 시 → 현재 포지션 유지 또는 관망]
-근거: [각 근거는 정확히 1문장으로 작성, 설명 길이 통일]
-1) [방향성 불명확을 1문장으로, 예: 방향성 불명확으로 대기 필요]
-2) [돌파/이탈 확인을 1문장으로, 예: 돌파/이탈 신호 확인 후 추가 조치 필요]
+조건: [AI가 판단한 가격 범위와 기간, 예: ${(currentPrice * 0.98).toLocaleString()}원 ~ ${(currentPrice * 1.02).toLocaleString()}원] 박스권 [AI가 판단한 기간] 이상
+액션: [AI가 판단한 액션, 예: 박스권 유지 시 → 현재 포지션 유지 또는 관망]
+근거:
+1) [AI가 분석한 방향성 불명확 이유]
+2) [AI가 분석한 돌파/이탈 확인 필요 이유]
 
 하락 시나리오:
-조건: [구체적 가격, 예: ${stopLossPrice.toLocaleString()}원 하회] OR [구체적 지표 조건, 예: MACD 지속 하락]
-⚠️ 중요: 액션은 "손절 준비"가 아닌 구체적 액션으로 작성하세요. 예: "포지션의 [숫자]% 청산" 또는 "손절가 하회 시 즉시 청산"
-⚠️ ${period.name} 전략의 손절가는 ${stopLossPrice.toLocaleString()}원 (${period.stoploss})입니다.
-액션: [가격 정보 포함, 구체적 액션 명시, 예: ${stopLossPrice.toLocaleString()}원 하회 시 → 포지션의 [숫자]% 청산]
-근거: [각 근거는 정확히 1문장으로 작성, 설명 길이 통일]
-1) [하락 추세 확정을 1문장으로, 예: 하락 추세 확정으로 손실 확대 위험]
-2) [리스크 관리 필요를 1문장으로, 예: 추가 하락 가능성에 대한 리스크 관리 필요]
-3) [재진입 타이밍을 1문장으로, 예: 재진입은 MACD 상승세 전환 시 고려]
+조건: [AI가 판단한 가격 또는 지표 조건, 예: ${stopLossPrice.toLocaleString()}원 하회 OR MACD 지속 하락]
+액션: [AI가 판단한 구체적 액션, 예: [조건 가격]원 하회 시 → 포지션의 [숫자]% 청산]
+근거:
+1) [AI가 분석한 하락 추세 확정 이유]
+2) [AI가 분석한 리스크 관리 필요 이유]
+3) [AI가 분석한 재진입 타이밍]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 [5~7일차 또는 4주차: 수익 실현]
 
-⚠️ 중요: 각 액션에는 반드시 가격과 수익률 정보를 포함하세요.
+⚠️ 절대 규칙: 이 섹션은 "목표가 달성 시 익절"을 위한 것입니다. 추가 진입은 2~3일차에서만 다룹니다.
+
+📊 참고 목표가 (AI 판단 시 참고만 하세요):
+- 1차 목표: ${targetPrice1.toLocaleString()}원 (+${period.target1Percent}%)
+- 2차 목표: ${targetPrice2.toLocaleString()}원 (+${period.target2Percent}%)
+
+🚨 절대 금지 사항:
+1. 이 섹션에 "추가 진입" 관련 내용을 작성하면 안 됩니다!
+2. 이 섹션은 오직 "익절"만 다룹니다.
+3. 2~3일차에서 이미 추가 진입을 했다면, 여기서는 익절만 고려하세요.
+
+💡 AI 판단 가이드:
+- 목표가 달성 시 익절 비율은 AI가 시장 상황과 리스크를 고려하여 결정
+- 1차 목표 달성 시: 부분 익절 (예: 30~50%)로 수익 확보 + 잔여 포지션으로 추가 상승 노림
+- 2차 목표 달성 시: 추가 익절 (예: 30~50%) 또는 전량 청산 판단
+- AI가 시장 상황에 따라 다른 전략을 제시할 수 있지만, 반드시 "익절" 관련 내용만 작성
 
 1차 목표 달성 시:
 가격: ${targetPrice1.toLocaleString()}원 (${period.name} 전략의 1차 목표, +${period.target1Percent}%)
-액션: [가격과 수익률 포함, 예: ${targetPrice1.toLocaleString()}원 달성 시 → 포지션의 [숫자]% 익절 (예상 수익: +${period.target1Percent}.0%)]
-근거: [각 근거는 정확히 1문장으로 작성, 설명 길이 통일]
-1) [목표가 도달 의미를 1문장으로, 예: 목표가 도달로 수익 확보 필요]
-2) [잔여 포지션 관리를 1문장으로, 예: 추가 상승 가능성 고려하여 잔여 포지션 관리]
+🚨 검증: 이 가격(${targetPrice1.toLocaleString()}원)이 2~3일차 상승 시나리오 조건 가격과 다른지 확인하세요! 같으면 안 됩니다!
+액션: [AI가 판단한 익절 비율과 전략, 반드시 "익절" 또는 "청산" 관련 내용만, 예: ${targetPrice1.toLocaleString()}원 달성 시 → 포지션의 [AI가 판단한 %]% 익절 (예상 수익: +${period.target1Percent}.0%)]
+근거:
+1) [AI가 분석한 목표가 도달 의미]
+2) [AI가 분석한 잔여 포지션 관리 전략]
 
 2차 목표 달성 시:
 가격: ${targetPrice2.toLocaleString()}원 (${period.name} 전략의 2차 목표, +${period.target2Percent}%)
-액션: [가격과 수익률 포함, 예: ${targetPrice2.toLocaleString()}원 달성 시 → 포지션의 [숫자]% 익절 (예상 수익: +${period.target2Percent}.0%)]
-근거: [각 근거는 정확히 1문장으로 작성, 설명 길이 통일]
-1) [목표가 도달 의미를 1문장으로, 예: 목표가 도달로 추가 수익 실현]
-2) [시장 상황 고려를 1문장으로, 예: 시장 상황에 따른 추가 전략 고려]
+액션: [AI가 판단한 익절 비율과 전략, 반드시 "익절" 또는 "청산" 관련 내용만, 예: ${targetPrice2.toLocaleString()}원 달성 시 → 포지션의 [AI가 판단한 %]% 익절 또는 전량 청산]
+근거:
+1) [AI가 분석한 목표가 도달 의미]
+2) [AI가 분석한 시장 상황과 추가 전략]
 
-추가 전략: [각 항목은 1문장으로 간결하게]
+추가 전략:
 1) 거래량: [조건과 액션을 1문장으로, 예: 거래량 50% 이상 증가 시 추가 진입 검토]
 2) 시간: ${period.duration} 경과 시 [액션을 1문장으로, 예: 시장 반응 확인 후 재평가]
 3) 시장상황: [조건과 액션을 1문장으로, 예: 주요 경제지표 발표 시 대응 전략 수립]
@@ -1296,7 +1396,356 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
     }
   }
 
-  // 🆕 투자 전략 파싱 함수 (이모지/Phase 제거된 새 형식)
+  /**
+   * 프리미엄: AI를 활용한 상세 투자 전략 생성
+   */
+  private async generatePremiumStrategy(
+    symbol: any,
+    latestCandle: any,
+    latestIndicator: any,
+    candles: any[],
+    entryPrice: number,
+    targetPrice1: number,
+    targetPrice2: number,
+    stopLossPrice: number,
+    investmentPeriod: 'swing' | 'medium' | 'long',
+    volatilityLevel: 'high' | 'medium' | 'low',
+    historicalContext: any,
+    symbolCode?: string
+  ): Promise<any | null> {
+    if (!this.openai) {
+      return null; // OpenAI가 없으면 null 반환
+    }
+
+    try {
+      const currentPrice = latestCandle.close;
+      const rsi = latestIndicator?.rsi || 50;
+      const macd = latestIndicator?.macd || 0;
+      const macdSignal = latestIndicator?.macdSignal || 0;
+      const ma20 = latestIndicator?.ma20 || currentPrice;
+      const ma60 = latestIndicator?.ma60 || currentPrice;
+      const volume = latestCandle.volume || 0;
+      const avgVolume = candles.slice(0, 20).reduce((sum, c) => sum + (c.volume || 0), 0) / Math.min(20, candles.length);
+
+      const strategyPrompt = `당신은 전문 투자 전략 분석가입니다. 아래 기술적 지표와 시장 상황을 분석하여 매우 상세하고 실용적인 투자 전략을 JSON 형식으로 생성하세요.
+
+[종목 정보]
+- 종목명: ${symbol.name}
+- 현재가: ${currentPrice.toLocaleString()}원
+- 투자 기간: ${investmentPeriod === 'swing' ? '3~7일 단기 스윙' : investmentPeriod === 'medium' ? '2~4주 중기' : '1~3개월 장기'}
+
+[기술적 지표]
+- RSI: ${rsi.toFixed(2)} ${rsi > 70 ? '(과매수)' : rsi < 30 ? '(과매도)' : '(중립)'}
+- MACD: ${macd.toFixed(2)}, Signal: ${macdSignal.toFixed(2)}, Histogram: ${(macd - macdSignal).toFixed(2)}
+- MA20: ${ma20.toFixed(0)}원, MA60: ${ma60.toFixed(0)}원
+- 현재가 대비 MA20: ${currentPrice > ma20 ? '상회' : '하회'} (${((currentPrice - ma20) / ma20 * 100).toFixed(2)}%)
+- 거래량: ${volume.toLocaleString()}주 (평균 대비 ${avgVolume > 0 ? ((volume / avgVolume) * 100).toFixed(0) : '100'}%)
+- 변동성: ${volatilityLevel}
+
+[목표가 및 손절가]
+- 진입가: ${entryPrice.toLocaleString()}원
+- 1차 목표가: ${targetPrice1.toLocaleString()}원 (+${((targetPrice1 - entryPrice) / entryPrice * 100).toFixed(1)}%)
+- 2차 목표가: ${targetPrice2.toLocaleString()}원 (+${((targetPrice2 - entryPrice) / entryPrice * 100).toFixed(1)}%)
+- 손절가: ${stopLossPrice.toLocaleString()}원 (${((stopLossPrice - entryPrice) / entryPrice * 100).toFixed(1)}%)
+- 추가 진입 권장가: ${Math.floor((currentPrice + targetPrice1) / 2).toLocaleString()}원 (현재가와 1차 목표가 중간)
+
+${historicalContext ? `[과거 유사 패턴]
+- 성공률: ${historicalContext.successRate}%
+- 평균 수익률: ${historicalContext.avgReturn}%
+- 최대 수익률: ${historicalContext.maxReturn}%
+- 최소 수익률: ${historicalContext.minReturn}%
+- 인사이트: ${historicalContext.insight}` : ''}
+
+[요구사항 - 매우 중요]
+다음 JSON 형식으로 매우 상세하고 실용적인 투자 전략을 생성하세요. 모든 액션은 구체적인 비율과 금액을 포함해야 합니다.
+
+{
+  "phase1": {
+    "entryRatio": [숫자, 25-40 사이, RSI와 MACD 신호 강도에 따라 결정],
+    "entryTiming": "[매우 구체적인 진입 타이밍, 예: 현재가 ${currentPrice.toLocaleString()}원에서 즉시 진입 또는 ${currentPrice.toLocaleString()}원 부근에서 분할 진입]",
+    "reasoning": "[4가지 근거를 번호로 구분하여 매우 상세히 작성, 각 근거는 1-2문장으로 구체적 수치 포함]\\n1) 기술적: RSI ${rsi.toFixed(2)}가 [과매수/과매도/중립] 영역에 있으며, MACD ${macd.toFixed(2)}가 Signal ${macdSignal.toFixed(2)}를 [상향돌파/하향돌파]하여 [매수/매도] 신호를 나타냄.\\n2) 추세: 현재가 ${currentPrice.toLocaleString()}원이 MA20(${ma20.toFixed(0)}원)을 [상회/하회]하고 있어 단기 [상승/하락] 추세를 [지지/저항]함.\\n3) 지지/저항: [구체적 가격대, 예: ${stopLossPrice.toLocaleString()}원이 손절가로 설정되어 있어 강한 지지선으로 작용] 또는 [저항선과 지지선 사이 박스권 형성].\\n4) 거래량: 거래량이 평균 대비 ${avgVolume > 0 ? ((volume / avgVolume) * 100).toFixed(0) : '100'}%로 [증가/감소]하여 [매수/매도] 모멘텀을 [강화/약화]하고 있음.",
+    "stopLoss": {
+      "price": ${stopLossPrice},
+      "percent": ${((stopLossPrice - entryPrice) / entryPrice * 100).toFixed(1)},
+      "timing": "[매우 구체적인 손절 타이밍, 예: 진입 후 즉시 손절가 설정 또는 현재가가 손절가 하회 시 또는 MACD 지속 하락 시]",
+      "reason": "[손절 사유를 번호로 구분하여 매우 상세히 작성]\\n1) 기술적 지표 분석: 손절가 이하로 하락 시 기술적 신호가 부정적으로 변할 수 있음.\\n2) 리스크 관리 관점: 손실을 최소화하기 위해 손절가 설정이 필요함.\\n3) 재진입 고려사항: 손절가에 도달 시 시장 상황을 재분석하여 재진입 여부 결정."
+    }
+  },
+  "phase2": {
+    "bullish": {
+      "condition": "[매우 구체적 가격과 지표 조건, 반드시 ${Math.floor((currentPrice + targetPrice1) / 2).toLocaleString()}원보다 낮은 가격 사용, 예: ${Math.floor((currentPrice + targetPrice1) / 2).toLocaleString()}원 돌파 AND RSI 55 이상]",
+      "action": "[매우 구체적 액션, 반드시 비율 포함, 예: 시드의 30% 추가 진입 또는 포지션의 20% 추가 매수]",
+      "actionRatio": [숫자, 20-40 사이],
+      "reason": "[근거를 번호로 구분하여 매우 상세히 작성]\\n1) 가격 상승 의미: [구체적 가격] 이하에서의 매수는 상승세를 강화할 수 있음.\\n2) 지표 개선 의미: MACD가 0을 상회하면 강한 상승 신호로 해석됨.\\n3) 과거 패턴 분석: ${historicalContext ? `과거 유사 패턴에서 성공률 ${historicalContext.successRate}%로 가격 상승이 나타났던 경우가 있었음.` : '과거 유사 패턴에서 가격 상승이 나타났던 경우가 있었음.'}"
+    },
+    "sideways": {
+      "condition": "[매우 구체적 가격 범위와 기간, 예: ${Math.floor(currentPrice * 0.98).toLocaleString()}원에서 ${Math.floor(currentPrice * 1.02).toLocaleString()}원 사이에서 2일 이상 지속될 경우]",
+      "action": "[매우 구체적 액션, 예: 현재 포지션 유지 또는 관망 또는 추가 진입 보류]",
+      "reason": "[근거를 번호로 구분하여 매우 상세히 작성]\\n1) 방향성 불명확 이유: 가격이 일정 범위 내에서 움직일 경우 추가적인 신호가 필요함.\\n2) 돌파/이탈 확인 필요 이유: 명확한 방향성을 확인하기 위해서는 돌파 또는 이탈이 필요함."
+    },
+    "bearish": {
+      "condition": "[매우 구체적 가격 또는 지표 조건, 예: ${stopLossPrice.toLocaleString()}원 이하로 하락할 경우 OR MACD 지속 하락]",
+      "action": "[매우 구체적 액션, 반드시 비율 포함, 예: 포지션의 50% 청산 또는 즉시 매도]",
+      "exitRatio": [숫자, 50-100 사이],
+      "reason": "[근거를 번호로 구분하여 매우 상세히 작성]\\n1) 하락 추세 확정 이유: 손절가 이하로 하락 시 하락 추세가 확정됨.\\n2) 리스크 관리 필요 이유: 손실을 최소화하기 위해 즉시 매도 필요.\\n3) 재진입 고려사항: 시장 상황을 재분석 후 재진입 여부 결정."
+    }
+  },
+  "phase3": {
+    "target1": {
+      "price": "${targetPrice1.toLocaleString()}원 (${investmentPeriod === 'swing' ? '단기 스윙' : investmentPeriod === 'medium' ? '중기' : '장기'} 전략의 1차 목표, +${((targetPrice1 - entryPrice) / entryPrice * 100).toFixed(1)}%)",
+      "action": "[매우 구체적 액션, 반드시 비율과 금액 포함, 예: ${targetPrice1.toLocaleString()}원 달성 시 → 포지션의 50% 익절 (예상 수익: +${((targetPrice1 - entryPrice) / entryPrice * 100).toFixed(1)}%) 또는 부분 매도]",
+      "exitRatio": [숫자, 30-60 사이],
+      "reason": "[근거를 번호로 구분하여 매우 상세히 작성]\\n1) 목표가 도달 의미: 1차 목표가 도달 시 일부 수익 실현 가능.\\n2) 잔여 포지션 관리 전략: 나머지 포지션은 시장 상황에 따라 추가 목표가로 관리."
+    },
+    "target2": {
+      "price": "${targetPrice2.toLocaleString()}원 (${investmentPeriod === 'swing' ? '단기 스윙' : investmentPeriod === 'medium' ? '중기' : '장기'} 전략의 2차 목표, +${((targetPrice2 - entryPrice) / entryPrice * 100).toFixed(1)}%)",
+      "action": "[매우 구체적 액션, 반드시 비율과 금액 포함, 예: ${targetPrice2.toLocaleString()}원 달성 시 → 포지션의 30% 추가 익절 또는 전량 매도]",
+      "exitRatio": [숫자, 30-100 사이],
+      "reason": "[근거를 번호로 구분하여 매우 상세히 작성]\\n1) 목표가 도달 의미: 2차 목표가 도달 시 전체 포지션 매도하여 수익 실현.\\n2) 시장 상황 고려: 목표가 도달 후 시장의 하락 신호가 나타날 경우 추가 손실 방지."
+    }
+  }
+}
+
+⚠️ 절대 규칙:
+1. JSON 형식으로만 응답하세요 (설명 없이)
+2. 모든 액션은 반드시 구체적인 비율(%, 숫자)과 금액을 포함해야 합니다
+3. "추가 매수", "관망", "부분 매도", "전량 매도" 같은 모호한 표현 금지
+4. 대신 "시드의 30% 추가 진입", "포지션의 50% 익절", "전량 청산" 같은 구체적 표현 사용
+5. phase2.bullish의 condition 가격은 반드시 ${targetPrice1.toLocaleString()}원보다 낮아야 합니다
+6. 각 근거는 구체적 수치와 함께 1-2문장으로 작성하세요`;
+
+      const completion = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: '당신은 전문 투자 전략 분석가입니다. 기술적 지표와 시장 상황을 분석하여 상세하고 실용적인 투자 전략을 JSON 형식으로 생성합니다. JSON만 응답하고 설명은 추가하지 마세요.',
+          },
+          {
+            role: 'user',
+            content: strategyPrompt,
+          },
+        ],
+        temperature: 0.3, // 일관성 높은 전략 생성
+        max_tokens: 2000, // 상세 전략을 위한 충분한 토큰
+        response_format: { type: 'json_object' }, // JSON 형식 강제
+      });
+
+      const strategyJson = completion.choices[0].message.content || '';
+      const strategy = JSON.parse(strategyJson);
+
+      // JSON 구조 검증
+      if (strategy.phase1 && strategy.phase2 && strategy.phase3) {
+        console.log('✅ 프리미엄 전략 생성 성공');
+        return strategy;
+      } else {
+        console.warn('⚠️ 프리미엄 전략 JSON 구조 불완전');
+        return null;
+      }
+    } catch (error) {
+      console.warn('프리미엄 전략 생성 실패:', error.message);
+      return null; // 실패 시 null 반환하여 기본 전략 사용
+    }
+  }
+
+  /**
+   * 기본: 기술적 지표 기반으로 투자 전략 직접 생성 (간단 버전)
+   */
+  private generateStrategyFromIndicators(
+    latestCandle: any,
+    latestIndicator: any,
+    entryPrice: number,
+    targetPrice1: number,
+    targetPrice2: number,
+    stopLossPrice: number,
+    investmentPeriod: 'swing' | 'medium' | 'long',
+    volatilityLevel: 'high' | 'medium' | 'low',
+    symbolCode?: string
+  ): any {
+    const currentPrice = latestCandle.close;
+    const ma20 = latestIndicator?.ma20 || currentPrice;
+    const ma60 = latestIndicator?.ma60 || currentPrice;
+    const rsi = latestIndicator?.rsi || 50;
+    const macd = latestIndicator?.macd || 0;
+    const macdSignal = latestIndicator?.macdSignal || 0;
+    const macdHistogram = macd - macdSignal;
+
+    // 진입 비율 결정 (RSI와 MACD 기반)
+    let entryRatio = 30; // 기본값
+    if (rsi > 55 && macdHistogram > 0) {
+      entryRatio = 40; // 강한 매수 신호
+    } else if (rsi > 50 && macdHistogram > 0) {
+      entryRatio = 35; // 중간 매수 신호
+    } else if (rsi < 45 || macdHistogram < 0) {
+      entryRatio = 25; // 약한 신호
+    }
+
+    // 진입 타이밍 생성
+    const entryTiming = `현재가 ${currentPrice.toLocaleString()}원 부근에서 분할 진입`;
+
+    // 근거 생성
+    const reasoning = [
+      `기술적: RSI ${rsi.toFixed(2)} ${rsi > 50 ? '상승' : '하락'} + MACD Signal ${macdHistogram > 0 ? '상향돌파' : '하향돌파'}로 ${macdHistogram > 0 ? '매수' : '매도'} 신호`,
+      `추세: 현재가가 MA20(${ma20.toFixed(0)}원) ${currentPrice > ma20 ? '상회' : '하회'}로 단기 ${currentPrice > ma20 ? '상승' : '하락'} 가능성 존재`,
+      `지지/저항: ${(currentPrice * 1.02).toLocaleString()}원 저항선과 ${(currentPrice * 0.98).toLocaleString()}원 지지선 사이 박스권 형성`,
+      `거래량: 거래량 증가 시 모멘텀 강화 가능`
+    ].join('\n');
+
+    // 손절 정보
+    const stopLoss = {
+      price: stopLossPrice,
+      percent: -Math.abs((stopLossPrice - currentPrice) / currentPrice * 100),
+      timing: '현재가가 손절가 하회 시 또는 MACD 지속 하락 시',
+      reason: [
+        '기술적 지표 약세로 추가 하락 가능성 존재',
+        '시장 방향성 불명확으로 손실 확대 위험',
+        '재진입은 MACD 상승세 전환 시 고려'
+      ].join('\n')
+    };
+
+    // Phase1 생성
+    const phase1 = {
+      entryRatio,
+      entryTiming,
+      reasoning,
+      stopLoss
+    };
+
+    // Phase2 생성 (상승/횡보/하락 시나리오)
+    const phase2: any = {};
+
+    // 상승 시나리오: 중간 가격대에서 추가 진입 (1차 목표가보다 낮게)
+    const additionalEntryPrice = Math.floor((currentPrice + targetPrice1) / 2);
+    if (rsi > 50 && macdHistogram > 0) {
+      phase2.bullish = {
+        condition: `${additionalEntryPrice.toLocaleString()}원 돌파 AND RSI 55 이상`,
+        action: `시드의 30% 추가 진입`,
+        actionRatio: 30,
+        reason: [
+          '가격 상승은 추세 전환 신호로 해석 가능',
+          '지표 개선은 모멘텀 강화의 의미',
+          '과거 유사 패턴에서 상승 지속 가능성 높음'
+        ].join('\n')
+      };
+    }
+
+    // 횡보 시나리오
+    const sidewaysLow = Math.floor(currentPrice * 0.98);
+    const sidewaysHigh = Math.floor(currentPrice * 1.02);
+    phase2.sideways = {
+      condition: `${sidewaysLow.toLocaleString()}원 ~ ${sidewaysHigh.toLocaleString()}원 박스권 3일 이상`,
+      action: '현재 포지션 유지 또는 관망',
+      reason: [
+        '방향성 불명확으로 대기 필요',
+        '돌파/이탈 신호 확인 후 추가 조치 필요'
+      ].join('\n')
+    };
+
+    // 하락 시나리오
+    phase2.bearish = {
+      condition: `${stopLossPrice.toLocaleString()}원 하회 OR MACD 지속 하락`,
+      action: `포지션의 50% 청산`,
+      exitRatio: 50,
+      reason: [
+        '하락 추세 확정으로 손실 확대 위험',
+        '추가 하락 가능성에 대한 리스크 관리 필요',
+        '재진입은 MACD 상승세 전환 시 고려'
+      ].join('\n')
+    };
+
+    // Phase3 생성 (목표 달성)
+    const phase3: any = {};
+
+    // 1차 목표 달성
+    const target1Percent = ((targetPrice1 - currentPrice) / currentPrice * 100).toFixed(1);
+    phase3.target1 = {
+      price: `${targetPrice1.toLocaleString()}원 (${investmentPeriod === 'swing' ? '단기 스윙' : investmentPeriod === 'medium' ? '중기' : '장기'} 전략의 1차 목표, +${target1Percent}%)`,
+      action: `${targetPrice1.toLocaleString()}원 달성 시 → 포지션의 50% 익절 (예상 수익: +${target1Percent}%)`,
+      exitRatio: 50,
+      reason: [
+        '목표가 도달로 수익 확보 필요',
+        '추가 상승 가능성 고려하여 잔여 포지션 관리'
+      ].join('\n')
+    };
+
+    // 2차 목표 달성
+    const target2Percent = ((targetPrice2 - currentPrice) / currentPrice * 100).toFixed(1);
+    phase3.target2 = {
+      price: `${targetPrice2.toLocaleString()}원 (${investmentPeriod === 'swing' ? '단기 스윙' : investmentPeriod === 'medium' ? '중기' : '장기'} 전략의 2차 목표, +${target2Percent}%)`,
+      action: `${targetPrice2.toLocaleString()}원 달성 시 → 포지션의 30% 추가 익절 또는 전량 청산`,
+      exitRatio: 30,
+      reason: [
+        '목표가 도달로 추가 수익 실현',
+        '시장 상황에 따른 추가 전략 고려'
+      ].join('\n')
+    };
+
+    return {
+      phase1,
+      phase2,
+      phase3
+    };
+  }
+
+  /**
+   * Fallback 전략 생성 (에러 시 사용)
+   */
+  private generateFallbackStrategy(
+    entryPrice: number,
+    targetPrice1: number,
+    targetPrice2: number,
+    stopLossPrice: number,
+    investmentPeriod: 'swing' | 'medium' | 'long'
+  ): any {
+    return {
+      phase1: {
+        entryRatio: 30,
+        entryTiming: `현재가 ${entryPrice.toLocaleString()}원 부근에서 분할 진입`,
+        reasoning: '기본 전략: 기술적 지표 기반 진입',
+        stopLoss: {
+          price: stopLossPrice,
+          percent: -Math.abs((stopLossPrice - entryPrice) / entryPrice * 100),
+          timing: '손절가 하회 시',
+          reason: '리스크 관리'
+        }
+      },
+      phase2: {
+        bullish: {
+          condition: `${Math.floor((entryPrice + targetPrice1) / 2).toLocaleString()}원 돌파`,
+          action: '시드의 30% 추가 진입',
+          actionRatio: 30,
+          reason: '추세 강화 확인'
+        },
+        sideways: {
+          condition: `${Math.floor(entryPrice * 0.98).toLocaleString()}원 ~ ${Math.floor(entryPrice * 1.02).toLocaleString()}원 박스권`,
+          action: '현재 포지션 유지',
+          reason: '방향성 불명확'
+        },
+        bearish: {
+          condition: `${stopLossPrice.toLocaleString()}원 하회`,
+          action: '포지션의 50% 청산',
+          exitRatio: 50,
+          reason: '하락 추세 확정'
+        }
+      },
+      phase3: {
+        target1: {
+          price: `${targetPrice1.toLocaleString()}원`,
+          action: `포지션의 50% 익절`,
+          exitRatio: 50,
+          reason: '1차 목표 달성'
+        },
+        target2: {
+          price: `${targetPrice2.toLocaleString()}원`,
+          action: `포지션의 30% 추가 익절`,
+          exitRatio: 30,
+          reason: '2차 목표 달성'
+        }
+      }
+    };
+  }
+
+  // 🆕 투자 전략 파싱 함수 (레거시, 사용 안 함)
   private parseInvestmentStrategy(content: string, entryPrice: number): any {
     try {
       // 5번 섹션 찾기
@@ -1309,35 +1758,55 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
       const strategyContent = strategySectionMatch[0];
       console.log('✅ 전략 섹션 찾음, 길이:', strategyContent.length);
       
-      // 초기 진입 파싱 (더 유연한 정규식 - 여러 형식 지원)
-      // phase1Match는 선택사항으로 변경 (entryRatioMatch만으로도 충분)
-      const phase1Match = strategyContent.match(/\[1일차[^\]]*: 초기 진입\]|\[1주차[^\]]*: 초기 진입\]|1일차.*초기 진입|1주차.*초기 진입|초기 진입/i);
-      const entryRatioMatch = strategyContent.match(/진입비율:\s*(\d+)%/);
-      // 진입타이밍은 "근거:" 전까지만 파싱
-      const entryTimingMatch = strategyContent.match(/진입타이밍:\s*([^\n]+(?:\n(?!근거:|손절가:|⚠️|\[2~3일차|\[2~3주차|상승 시나리오:)[^\n]+)*)/);
-      const reasoningMatch = strategyContent.match(/근거:\s*([\s\S]*?)(?=손절가:|⚠️|\[2~3일차|\[2~3주차|상승 시나리오:|$)/);
+      // 초기 진입 파싱 (확장된 정규식 - 여러 변형 형식 지원)
+      // 진입비율: 여러 형식 지원 (예: "진입비율: 40%", "진입 비율: 40%", "진입비율 40%")
+      const entryRatioMatch = strategyContent.match(/진입\s*비율\s*:?\s*(\d+)\s*%/i) || 
+                            strategyContent.match(/진입비율\s*:?\s*(\d+)\s*%/i) ||
+                            strategyContent.match(/진입\s*(\d+)\s*%/i);
+      
+      // 진입타이밍: 여러 형식 지원
+      const entryTimingMatch = strategyContent.match(/진입\s*타이밍\s*:?\s*([^\n]+(?:\n(?!근거:|손절가:|⚠️|\[2~3일차|\[2~3주차|상승 시나리오:|━━)[^\n]+)*)/i) ||
+                              strategyContent.match(/진입\s*시점\s*:?\s*([^\n]+(?:\n(?!근거:|손절가:|⚠️|\[2~3일차|\[2~3주차|상승 시나리오:|━━)[^\n]+)*)/i);
+      
+      // 근거: 여러 형식 지원
+      const reasoningMatch = strategyContent.match(/근거\s*:?\s*([\s\S]*?)(?=손절가:|⚠️|\[2~3일차|\[2~3주차|상승 시나리오:|━━|$)/i) ||
+                            strategyContent.match(/이유\s*:?\s*([\s\S]*?)(?=손절가:|⚠️|\[2~3일차|\[2~3주차|상승 시나리오:|━━|$)/i);
       
       console.log('🔍 Phase1 파싱 결과:', {
-        phase1Match: !!phase1Match,
         entryRatioMatch: !!entryRatioMatch,
         entryTimingMatch: !!entryTimingMatch,
         reasoningMatch: !!reasoningMatch
       });
-      // 손절 정보 파싱 (더 유연하게)
-      const stopLossPriceMatch = strategyContent.match(/손절가:\s*([\d,]+)원/);
-      const stopLossPercentMatch = strategyContent.match(/손절가:\s*[\d,]+원\s*\(([^)]+)\)/);
-      const stopLossTimingMatch = strategyContent.match(/손절타이밍:\s*([^\n]+)/);
-      const stopLossReasonMatch = strategyContent.match(/손절사유:\s*([\s\S]*?)(?=\[2~3일차|\[2~3주차|상승 시나리오:|횡보 시나리오:|하락 시나리오:|$)/);
       
-      // 상황별 대응 파싱 (strategyContent 사용) - 액션 필드 여러 줄 지원
-      const bullishMatch = strategyContent.match(/상승 시나리오:\s*조건:\s*([^\n]+)[\s\S]*?액션:\s*([^\n]+(?:\n(?!근거:|횡보 시나리오:|하락 시나리오:|\[5~7일차|\[4주차)[^\n]+)*)[\s\S]*?근거:\s*([\s\S]*?)(?=횡보 시나리오:|하락 시나리오:|\[5~7일차|\[4주차|$)/);
-      const sidewaysMatch = strategyContent.match(/횡보 시나리오:\s*조건:\s*([^\n]+)[\s\S]*?액션:\s*([^\n]+(?:\n(?!근거:|하락 시나리오:|\[5~7일차|\[4주차)[^\n]+)*)[\s\S]*?근거:\s*([\s\S]*?)(?=하락 시나리오:|\[5~7일차|\[4주차|$)/);
-      const bearishMatch = strategyContent.match(/하락 시나리오:\s*조건:\s*([^\n]+)[\s\S]*?액션:\s*([^\n]+(?:\n(?!근거:|\[5~7일차|\[4주차)[^\n]+)*)[\s\S]*?근거:\s*([\s\S]*?)(?=\[5~7일차|\[4주차|$)/);
+      // 손절 정보 파싱 (확장된 정규식)
+      const stopLossPriceMatch = strategyContent.match(/손절가\s*:?\s*([\d,]+)\s*원/i) ||
+                                 strategyContent.match(/손절\s*가격\s*:?\s*([\d,]+)\s*원/i);
+      const stopLossPercentMatch = strategyContent.match(/손절가\s*:?\s*[\d,]+\s*원\s*\(([^)]+)\)/i) ||
+                                   strategyContent.match(/손절가\s*:?\s*[\d,]+\s*원\s*[\(（]([^)]+)[\)）]/i);
+      const stopLossTimingMatch = strategyContent.match(/손절\s*타이밍\s*:?\s*([^\n]+)/i) ||
+                                  strategyContent.match(/손절\s*시점\s*:?\s*([^\n]+)/i);
+      const stopLossReasonMatch = strategyContent.match(/손절\s*사유\s*:?\s*([\s\S]*?)(?=\[2~3일차|\[2~3주차|상승 시나리오:|횡보 시나리오:|하락 시나리오:|━━|$)/i) ||
+                                  strategyContent.match(/손절\s*이유\s*:?\s*([\s\S]*?)(?=\[2~3일차|\[2~3주차|상승 시나리오:|횡보 시나리오:|하락 시나리오:|━━|$)/i);
       
-      // 수익 실현 파싱 (strategyContent 사용) - 액션 필드 여러 줄 지원
-      const target1ExitMatch = strategyContent.match(/1차 목표 달성 시:\s*가격:\s*([^\n]+)[\s\S]*?액션:\s*([^\n]+(?:\n(?!근거:|2차 목표 달성 시:|추가 전략:)[^\n]+)*)[\s\S]*?근거:\s*([\s\S]*?)(?=2차 목표 달성 시:|추가 전략:|$)/);
-      const target2ExitMatch = strategyContent.match(/2차 목표 달성 시:\s*가격:\s*([^\n]+)[\s\S]*?액션:\s*([^\n]+(?:\n(?!근거:|추가 전략:)[^\n]+)*)[\s\S]*?근거:\s*([\s\S]*?)(?=추가 전략:|$)/);
-      const additionalMatch = strategyContent.match(/추가 전략:\s*([\s\S]*?)(?=━━|※|$)/);
+      // 상황별 대응 파싱 (확장된 정규식 - 여러 변형 형식 지원)
+      const bullishMatch = strategyContent.match(/상승\s*시나리오\s*:?\s*조건\s*:?\s*([^\n]+)[\s\S]*?액션\s*:?\s*([^\n]+(?:\n(?!근거:|횡보 시나리오:|하락 시나리오:|\[5~7일차|\[4주차|━━)[^\n]+)*)[\s\S]*?근거\s*:?\s*([\s\S]*?)(?=횡보 시나리오:|하락 시나리오:|\[5~7일차|\[4주차|━━|$)/i) ||
+                       strategyContent.match(/상승\s*상황\s*:?\s*조건\s*:?\s*([^\n]+)[\s\S]*?액션\s*:?\s*([^\n]+(?:\n(?!근거:|횡보 시나리오:|하락 시나리오:|\[5~7일차|\[4주차|━━)[^\n]+)*)[\s\S]*?근거\s*:?\s*([\s\S]*?)(?=횡보 시나리오:|하락 시나리오:|\[5~7일차|\[4주차|━━|$)/i);
+      
+      const sidewaysMatch = strategyContent.match(/횡보\s*시나리오\s*:?\s*조건\s*:?\s*([^\n]+)[\s\S]*?액션\s*:?\s*([^\n]+(?:\n(?!근거:|하락 시나리오:|\[5~7일차|\[4주차|━━)[^\n]+)*)[\s\S]*?근거\s*:?\s*([\s\S]*?)(?=하락 시나리오:|\[5~7일차|\[4주차|━━|$)/i) ||
+                        strategyContent.match(/횡보\s*상황\s*:?\s*조건\s*:?\s*([^\n]+)[\s\S]*?액션\s*:?\s*([^\n]+(?:\n(?!근거:|하락 시나리오:|\[5~7일차|\[4주차|━━)[^\n]+)*)[\s\S]*?근거\s*:?\s*([\s\S]*?)(?=하락 시나리오:|\[5~7일차|\[4주차|━━|$)/i);
+      
+      const bearishMatch = strategyContent.match(/하락\s*시나리오\s*:?\s*조건\s*:?\s*([^\n]+)[\s\S]*?액션\s*:?\s*([^\n]+(?:\n(?!근거:|\[5~7일차|\[4주차|━━)[^\n]+)*)[\s\S]*?근거\s*:?\s*([\s\S]*?)(?=\[5~7일차|\[4주차|━━|$)/i) ||
+                      strategyContent.match(/하락\s*상황\s*:?\s*조건\s*:?\s*([^\n]+)[\s\S]*?액션\s*:?\s*([^\n]+(?:\n(?!근거:|\[5~7일차|\[4주차|━━)[^\n]+)*)[\s\S]*?근거\s*:?\s*([\s\S]*?)(?=\[5~7일차|\[4주차|━━|$)/i);
+      
+      // 수익 실현 파싱 (확장된 정규식)
+      const target1ExitMatch = strategyContent.match(/1차\s*목표\s*달성\s*시\s*:?\s*가격\s*:?\s*([^\n]+)[\s\S]*?액션\s*:?\s*([^\n]+(?:\n(?!근거:|2차 목표 달성 시:|추가 전략:|━━)[^\n]+)*)[\s\S]*?근거\s*:?\s*([\s\S]*?)(?=2차 목표 달성 시:|추가 전략:|━━|$)/i) ||
+                            strategyContent.match(/1차\s*목표\s*:?\s*가격\s*:?\s*([^\n]+)[\s\S]*?액션\s*:?\s*([^\n]+(?:\n(?!근거:|2차 목표 달성 시:|추가 전략:|━━)[^\n]+)*)[\s\S]*?근거\s*:?\s*([\s\S]*?)(?=2차 목표 달성 시:|추가 전략:|━━|$)/i);
+      
+      const target2ExitMatch = strategyContent.match(/2차\s*목표\s*달성\s*시\s*:?\s*가격\s*:?\s*([^\n]+)[\s\S]*?액션\s*:?\s*([^\n]+(?:\n(?!근거:|추가 전략:|━━)[^\n]+)*)[\s\S]*?근거\s*:?\s*([\s\S]*?)(?=추가 전략:|━━|$)/i) ||
+                            strategyContent.match(/2차\s*목표\s*:?\s*가격\s*:?\s*([^\n]+)[\s\S]*?액션\s*:?\s*([^\n]+(?:\n(?!근거:|추가 전략:|━━)[^\n]+)*)[\s\S]*?근거\s*:?\s*([\s\S]*?)(?=추가 전략:|━━|$)/i);
+      
+      const additionalMatch = strategyContent.match(/추가\s*전략\s*:?\s*([\s\S]*?)(?=━━|※|$)/i) ||
+                             strategyContent.match(/기타\s*전략\s*:?\s*([\s\S]*?)(?=━━|※|$)/i);
       
       // Phase3 파싱
       console.log('🔍 Phase3 파싱 결과:', {
@@ -1348,7 +1817,7 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
 
       const strategy: any = {};
 
-      // Phase1 파싱 (더 유연하게 - entryRatioMatch만 있어도 파싱)
+      // Phase1 파싱 (기본값 설정으로 불완전한 strategy 방지)
       if (entryRatioMatch) {
         const entryRatio = parseInt(entryRatioMatch[1]);
         let entryTiming = entryTimingMatch ? entryTimingMatch[1].trim() : '';
@@ -1390,11 +1859,18 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
           hasStopLoss: !!stopLoss
         });
       } else {
-        console.warn('⚠️ Phase1 파싱 실패: entryRatioMatch 없음', {
-          phase1Match: !!phase1Match,
+        // Phase1 파싱 실패 시 기본값 설정 (Fallback 방지)
+        console.warn('⚠️ Phase1 파싱 실패: entryRatioMatch 없음, 기본값 사용', {
           entryRatioMatch: !!entryRatioMatch,
-          strategyContentPreview: strategyContent.substring(0, 1000) // 처음 1000자 출력
+          strategyContentPreview: strategyContent.substring(0, 1000)
         });
+        // 기본값으로 phase1 생성 (최소한의 구조 유지)
+        strategy.phase1 = {
+          entryRatio: 30, // 기본 진입비율
+          entryTiming: '현재가 부근에서 분할 진입',
+          reasoning: 'AI 응답 파싱 실패로 기본값 사용',
+          stopLoss: null
+        };
       }
 
       // Phase2 파싱
@@ -1419,11 +1895,17 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
           const ratioMatch = actionText.match(/시드의\s*(\d+)%|(\d+)%\s*추가/);
           const actionRatio = ratioMatch ? parseInt(ratioMatch[1] || ratioMatch[2]) : 0;
           
+          // 조건에서 가격 추출 (검증용)
+          const conditionText = bullishMatch[1].trim();
+          const conditionPriceMatch = conditionText.match(/([\d,]+)원/);
+          const conditionPrice = conditionPriceMatch ? parseInt(conditionPriceMatch[1].replace(/,/g, '')) : null;
+          
           strategy.phase2.bullish = {
-            condition: bullishMatch[1].trim(),
+            condition: conditionText,
             action: actionText, // "→" 이후 액션만 포함
             actionRatio,
-            reason: bullishMatch[3].trim()
+            reason: bullishMatch[3].trim(),
+            _conditionPrice: conditionPrice // 검증용 (나중에 phase3와 비교)
           };
         }
         
@@ -1459,6 +1941,14 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
             reason: bearishMatch[3].trim()
           };
         }
+      } else {
+        // Phase2 파싱 실패 시 기본값 설정
+        console.warn('⚠️ Phase2 파싱 실패: 시나리오 매칭 없음, 기본값 사용');
+        strategy.phase2 = {
+          bullish: { condition: '가격 상승 시', action: '추가 진입 검토', reason: 'AI 응답 파싱 실패' },
+          sideways: { condition: '횡보 지속 시', action: '현재 포지션 유지', reason: 'AI 응답 파싱 실패' },
+          bearish: { condition: '가격 하락 시', action: '리스크 관리', reason: 'AI 응답 파싱 실패' }
+        };
       }
 
       if (target1ExitMatch || target2ExitMatch) {
@@ -1481,8 +1971,33 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
           const ratioMatch = actionText.match(/포지션의\s*(\d+)%|(\d+)%\s*익절/);
           const exitRatio = ratioMatch ? parseInt(ratioMatch[1] || ratioMatch[2]) : 0;
           
+          // 가격 추출 (검증용)
+          const priceText = target1ExitMatch[1].trim();
+          const priceMatch = priceText.match(/([\d,]+)원/);
+          const targetPrice = priceMatch ? parseInt(priceMatch[1].replace(/,/g, '')) : null;
+          
+          // 🚨 검증: phase2.bullish 조건 가격과 같은지 확인
+          if (strategy.phase2?.bullish?._conditionPrice && targetPrice && 
+              Math.abs(strategy.phase2.bullish._conditionPrice - targetPrice) < 100) {
+            console.warn('⚠️ 경고: 2~3일차 상승 시나리오 조건 가격과 1차 목표가가 거의 같습니다!', {
+              phase2ConditionPrice: strategy.phase2.bullish._conditionPrice,
+              phase3TargetPrice: targetPrice,
+              difference: Math.abs(strategy.phase2.bullish._conditionPrice - targetPrice)
+            });
+            // phase2 조건 가격을 조정 (1차 목표가보다 낮게)
+            if (targetPrice && entryPrice) {
+              const adjustedPrice = Math.floor((entryPrice + targetPrice) / 2);
+              strategy.phase2.bullish.condition = strategy.phase2.bullish.condition.replace(
+                /([\d,]+)원/,
+                `${adjustedPrice.toLocaleString()}원`
+              );
+              strategy.phase2.bullish._conditionPrice = adjustedPrice;
+              console.log('✅ 2~3일차 상승 시나리오 조건 가격을 자동 조정:', adjustedPrice.toLocaleString(), '원');
+            }
+          }
+          
           strategy.phase3.target1 = {
-            price: target1ExitMatch[1].trim(),
+            price: priceText,
             action: actionText, // 깨끗한 액션만 포함
             exitRatio,
             reason: target1ExitMatch[3].trim()
@@ -1517,6 +2032,13 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
         if (additionalMatch) {
           strategy.phase3.additional = additionalMatch[1].trim();
         }
+      } else {
+        // Phase3 파싱 실패 시 기본값 설정
+        console.warn('⚠️ Phase3 파싱 실패: 목표 달성 매칭 없음, 기본값 사용');
+        strategy.phase3 = {
+          target1: { price: '1차 목표가', action: '부분 익절', reason: 'AI 응답 파싱 실패' },
+          target2: { price: '2차 목표가', action: '추가 익절', reason: 'AI 응답 파싱 실패' }
+        };
       }
 
       if (Object.keys(strategy).length > 0) {
@@ -1545,7 +2067,6 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
         return strategy;
       } else {
         console.warn('⚠️ 전략 파싱 실패: 파싱된 섹션이 없습니다', {
-          phase1Match: !!phase1Match,
           entryRatioMatch: !!entryRatioMatch,
           bullishMatch: !!bullishMatch,
           sidewaysMatch: !!sidewaysMatch,
