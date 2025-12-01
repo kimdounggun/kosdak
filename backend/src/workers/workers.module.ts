@@ -9,7 +9,6 @@ import { CandlesCollectorWorker } from './candles-collector.worker';
 import { AlertCheckerWorker } from './alert-checker.worker';
 import { AiReportWorker } from './ai-report.worker';
 import { OutcomeTrackerWorker } from './outcome-tracker.worker';
-import { AutoAiAnalysisWorker } from './auto-ai-analysis.worker';
 import { WorkersController } from './workers.controller';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AiReport, AiReportSchema } from '../schemas/ai-report.schema';
@@ -29,7 +28,7 @@ import { Symbol, SymbolSchema } from '../schemas/symbol.schema';
     NotificationsModule,
   ],
   controllers: [WorkersController],
-  providers: [CandlesCollectorWorker, AlertCheckerWorker, AiReportWorker, OutcomeTrackerWorker, AutoAiAnalysisWorker],
+  providers: [CandlesCollectorWorker, AlertCheckerWorker, AiReportWorker, OutcomeTrackerWorker],
 })
 export class WorkersModule { }
 
