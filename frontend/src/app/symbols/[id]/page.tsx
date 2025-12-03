@@ -99,7 +99,7 @@ export default function SymbolDetailPage() {
   const [cachedReports, setCachedReports] = useState<Map<string, {data: any, timestamp: number}>>(new Map())
   const [userCapital, setUserCapital] = useState<number | null>(null)
   const [symbolAllocationPct, setSymbolAllocationPct] = useState<number>(30)
-  const [riskProfile, setRiskProfile] = useState<'conservative' | 'basic' | 'aggressive'>('basic')
+  // riskProfile 제거 (보수형/기본형/공격형 미사용)
   const [showScenarioDetails, setShowScenarioDetails] = useState(false)
 
   useEffect(() => {
@@ -644,128 +644,35 @@ export default function SymbolDetailPage() {
     }
   }
 
-  // 전략 플랜(보수형/기본형/공격형) 및 계좌 기준 수치 계산
+  // ⚠️ buildStrategyPlans 제거 (보수형/기본형/공격형 미사용)
   const buildStrategyPlans = () => {
+    // 백엔드 AI 전략 기반 기본 정보만 반환
     if (!candles || candles.length === 0) return null
 
     const currentPrice = candles[0].close
     const meta = aiReport?.metadata || {}
-
     const stopLossPrice = meta.stopLossPrice ?? currentPrice * 0.97
     const baseStopLossPct = currentPrice
       ? Number((((stopLossPrice - currentPrice) / currentPrice) * 100).toFixed(1))
       : -3
+    
+    const baseEntryRatio = meta.strategy?.phase1?.entryRatio ?? 35
 
-    // 과거 유사 패턴 기반 성과 구간 (백엔드에서 계산된 메타데이터)
-    const historicalPattern = meta.historicalPattern as
-      | { p25?: number; p75?: number; avgReturn?: number }
-      | undefined
-    const globalExpectedMin =
-      typeof historicalPattern?.p25 === 'number' ? historicalPattern.p25 : null
-    const globalExpectedMax =
-      typeof historicalPattern?.p75 === 'number' ? historicalPattern.p75 : null
-
-    // 1순위: 백엔드 AI가 설계한 riskPlans 사용
-    const riskPlans = meta.strategy?.riskPlans
-
-    let plans:
-      | Array<{
-          id: 'conservative' | 'basic' | 'aggressive'
-          name: string
-          entryRatio: number
-          addRatio: number
-          stopLossPct: number
-          expectedMin?: number | null
-          expectedMax?: number | null
-          comment?: string
-        }>
-      | null = null
-
-    if (riskPlans?.conservative && riskPlans.basic && riskPlans.aggressive) {
-      const normalize = (
-        id: 'conservative' | 'basic' | 'aggressive',
-        fallbackName: string,
-        plan: any,
-      ) => {
-        const entryRatio = Number(plan.entryRatio ?? 0)
-        const addRatio = Number(plan.addRatio ?? 0)
-        const stopLossPercent = Number(plan.stopLossPercent ?? baseStopLossPct)
-
-        // 기대 수익 구간: 우선 순위
-        // 1) plan.expectedReturnMin/Max (AI/백엔드가 명시적으로 제공한 값)
-        // 2) 메타데이터의 과거 패턴 p25/p75 (데이터 기반 분포)
-        let expectedMin: number | null = null
-        let expectedMax: number | null = null
-
-        const rawMin = plan.expectedReturnMin
-        const rawMax = plan.expectedReturnMax
-
-        if (typeof rawMin === 'number' && typeof rawMax === 'number') {
-          expectedMin = rawMin
-          expectedMax = Math.max(rawMin, rawMax)
-        } else if (globalExpectedMin != null && globalExpectedMax != null) {
-          expectedMin = globalExpectedMin
-          expectedMax = globalExpectedMax
-        }
-
-        return {
-          id,
-          name: String(plan.name || fallbackName),
-          entryRatio: entryRatio || 0,
-          addRatio: addRatio || 0,
-          stopLossPct: stopLossPercent || baseStopLossPct,
-          expectedMin,
-          expectedMax,
-          comment: typeof plan.comment === 'string' ? plan.comment : undefined,
-        }
-      }
-
-      plans = [
-        normalize('conservative', '보수형', riskPlans.conservative),
-        normalize('basic', '기본형', riskPlans.basic),
-        normalize('aggressive', '공격형', riskPlans.aggressive),
-      ]
-    } else {
-      // Fallback: 기존 프론트 계산 방식
-      // 기대 수익 퍼센트는 백엔드/실제 성과 기반 메타데이터가 준비될 때까지
-      // 과거 패턴(p25/p75)이 있을 때만 사용
-      const baseEntryRatio = meta.strategy?.phase1?.entryRatio ?? 35
-
-      plans = [
+    // 보수형/기본형/공격형 대신 AI 전략 기본값만 사용
+    const plans = [
         {
-          id: 'conservative',
-          name: '보수형',
-          entryRatio: Math.max(15, baseEntryRatio - 10),
-          addRatio: 25,
-          stopLossPct: Math.max(baseStopLossPct - 2, baseStopLossPct - 4),
-          expectedMin: globalExpectedMin,
-          expectedMax: globalExpectedMax,
-          comment: '계좌 변동성을 최소화하는 보수형 전략',
-        },
-        {
-          id: 'basic',
-          name: '기본형',
+          id: 'basic' as const,
+          name: 'AI 전략',
           entryRatio: baseEntryRatio,
           addRatio: 30,
           stopLossPct: baseStopLossPct,
-          expectedMin: globalExpectedMin,
-          expectedMax: globalExpectedMax,
-          comment: '위험과 수익을 균형 있게 가져가는 기본 전략',
-        },
-        {
-          id: 'aggressive',
-          name: '공격형',
-          entryRatio: Math.min(70, baseEntryRatio + 15),
-          addRatio: 30,
-          stopLossPct: baseStopLossPct + 2,
-          expectedMin: globalExpectedMin,
-          expectedMax: globalExpectedMax,
-          comment: '수익 극대화를 노리지만 변동성이 큰 공격형 전략',
+          expectedMin: null as number | null,
+          expectedMax: null as number | null,
+          comment: 'AI가 생성한 최적화 전략',
         },
       ]
-    }
 
-    const selectedPlan = plans.find(p => p.id === riskProfile) || plans[1]
+    const selectedPlan = plans[0] // 보수형/기본형/공격형 제거, AI 전략만 사용
 
     let accountView: {
       totalAllocation: number
@@ -3419,140 +3326,7 @@ export default function SymbolDetailPage() {
 
                     return (
                       <div className="mt-5 space-y-4">
-                        {/* 전략 플랜 다단계 (보수형/기본형/공격형)
-                            - 모바일: 선택된 플랜 요약만, 데스크톱: 전체 테이블 */}
-                        <div className="bg-[#141821] border border-[#2a3142] rounded-lg p-4">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-                            <div>
-                              <p className="text-xs text-[#8b95a5] mb-1">전략 플랜</p>
-                              <p className="text-sm font-semibold text-white">보수형 · 기본형 · 공격형 비교</p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {plans.map(plan => (
-                                <button
-                                  key={plan.id}
-                                  type="button"
-                                  onClick={() => setRiskProfile(plan.id)}
-                                  className={`px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                                    riskProfile === plan.id
-                                      ? 'bg-[#00E5A8] text-black border-[#00E5A8]'
-                                      : 'bg-[#111827] text-[#CFCFCF] border-[#2a3142] hover:border-[#4b5563]'
-                                  }`}
-                                >
-                                  {plan.name}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* 데스크톱: 전체 비교 테이블 */}
-                          <div className="hidden sm:block overflow-x-auto">
-                            <table className="min-w-full text-[10px] sm:text-xs text-[#CFCFCF]">
-                              <thead>
-                                <tr className="border-b border-[#2a3142]">
-                                  <th className="py-1.5 pr-2 text-left font-semibold text-[#8b95a5]">플랜</th>
-                                  <th className="py-1.5 px-2 text-right font-semibold text-[#8b95a5]">1차 진입</th>
-                                  <th className="py-1.5 px-2 text-right font-semibold text-[#8b95a5]">추가 진입</th>
-                                  <th className="py-1.5 px-2 text-right font-semibold text-[#8b95a5]">손절 폭</th>
-                                  <th className="py-1.5 pl-2 text-right font-semibold text-[#8b95a5]">
-                                    과거 성과 (데이터 기반)
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {plans.map(plan => (
-                                  <tr
-                                    key={plan.id}
-                                    className={`border-t border-[#111827] ${
-                                      riskProfile === plan.id ? 'bg-[rgba(0,229,168,0.04)]' : ''
-                                    }`}
-                                  >
-                                    <td className="py-1.5 pr-2 text-left font-semibold text-white">
-                                      {plan.name}
-                                      {plan.id === riskProfile && (
-                                        <span className="ml-1.5 text-[9px] text-[#00E5A8] align-middle">
-                                          (선택)
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td className="py-1.5 px-2 text-right">
-                                      {plan.entryRatio}% 진입
-                                    </td>
-                                    <td className="py-1.5 px-2 text-right">
-                                      {plan.addRatio}% 추가
-                                    </td>
-                                    <td className="py-1.5 px-2 text-right text-[#FF4D4D]">
-                                      {plan.stopLossPct.toFixed(1)}%
-                                    </td>
-                                    <td className="py-1.5 pl-2 text-right text-[#00E5A8]">
-                                      {plan.expectedMin != null && plan.expectedMax != null
-                                        ? `+${plan.expectedMin.toFixed(1)}~${plan.expectedMax.toFixed(1)}%`
-                                        : '데이터 축적 중'}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-
-                          {/* 모바일: 선택된 플랜 요약 카드 */}
-                          <div className="block sm:hidden mt-2 text-[11px] text-[#CFCFCF]">
-                            <div className="bg-[#020617] border border-[#2a3142] rounded-md p-3 space-y-1.5">
-                              <p className="text-xs font-semibold text-white">
-                                {selectedPlan.name} 플랜 요약
-                              </p>
-                              <p>
-                                1차 진입{' '}
-                                <span className="font-semibold text-[#00E5A8]">
-                                  {selectedPlan.entryRatio}%
-                                </span>
-                                , 추가 진입 {selectedPlan.addRatio}% / 손절{' '}
-                                <span className="font-semibold text-[#F87171]">
-                                  {selectedPlan.stopLossPct.toFixed(1)}%
-                                </span>
-                              </p>
-                              {selectedPlan.expectedMin != null &&
-                                selectedPlan.expectedMax != null && (
-                                  <p>
-                                    과거 성과 구간{' '}
-                                    <span className="font-semibold text-[#00E5A8]">
-                                      +{selectedPlan.expectedMin.toFixed(1)}~
-                                      {selectedPlan.expectedMax.toFixed(1)}%
-                                    </span>
-                                  </p>
-                                )}
-                            </div>
-                          </div>
-
-                          {/* 백테스트 인사이트 한 줄 */}
-                          {backtestSummary && (
-                            <div className="mt-3 pt-3 border-t border-[#2a3142]">
-                              <p className="text-[10px] sm:text-xs text-[#8b95a5]">
-                                이와 비슷한 세팅 {backtestSummary.totalCases}건 중{' '}
-                                <span className="text-[#00E5A8] font-semibold">
-                                  성공률 {backtestSummary.successRate}%
-                                </span>
-                                , 평균 수익{' '}
-                                <span className={backtestSummary.avgReturn >= 0 ? 'text-[#00E5A8]' : 'text-[#FF4D4D]'}>
-                                  {backtestSummary.avgReturn >= 0 ? '+' : ''}
-                                  {backtestSummary.avgReturn}%
-                                </span>
-                                , 최대 낙폭{' '}
-                                <span className="text-[#FF4D4D]">
-                                  {backtestSummary.maxDrawdown}%
-                                </span>{' '}
-                                → 신뢰도{' '}
-                                <span className="font-semibold">
-                                  {backtestSummary.successRate >= 70
-                                    ? '높음'
-                                    : backtestSummary.successRate >= 50
-                                    ? '중상'
-                                    : '보통 이하'}
-                                </span>
-                              </p>
-                            </div>
-                          )}
-                        </div>
+                        {/* 보수형/기본형/공격형 테이블 제거 (미사용) */}
 
                         {/* 2단계/3단계: 자산 기준 커스터마이징 + 오늘 액션 체크리스트 + 시나리오 표 */}
                         <div className="bg-[#141821] border border-[#2a3142] rounded-lg p-4 space-y-4">
@@ -3595,44 +3369,7 @@ export default function SymbolDetailPage() {
                                   }
                                 />
                               </div>
-                              <div className="flex flex-col">
-                                <span className="block text-[10px] text-[#8b95a5] mb-1">리스크 성향</span>
-                                <div className="flex gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => setRiskProfile('conservative')}
-                                    className={`flex-1 px-1.5 py-1 rounded-full text-[10px] border ${
-                                      riskProfile === 'conservative'
-                                        ? 'bg-[#111827] text-[#CFCFCF] border-[#00E5A8]'
-                                        : 'bg-[#020617] text-[#6b7280] border-[#1f2937]'
-                                    }`}
-                                  >
-                                    보수형
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setRiskProfile('basic')}
-                                    className={`flex-1 px-1.5 py-1 rounded-full text-[10px] border ${
-                                      riskProfile === 'basic'
-                                        ? 'bg-[#111827] text-[#CFCFCF] border-[#00E5A8]'
-                                        : 'bg-[#020617] text-[#6b7280] border-[#1f2937]'
-                                    }`}
-                                  >
-                                    기본형
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setRiskProfile('aggressive')}
-                                    className={`flex-1 px-1.5 py-1 rounded-full text-[10px] border ${
-                                      riskProfile === 'aggressive'
-                                        ? 'bg-[#111827] text-[#CFCFCF] border-[#00E5A8]'
-                                        : 'bg-[#020617] text-[#6b7280] border-[#1f2937]'
-                                    }`}
-                                  >
-                                    공격형
-                                  </button>
-                                </div>
-                              </div>
+                              {/* 리스크 성향 버튼 제거 (보수형/기본형/공격형 미사용) */}
                             </div>
                           </div>
 

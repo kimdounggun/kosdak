@@ -20,7 +20,7 @@ export class AiReport {
   })
   reportType: string;
 
-  @Prop({ required: true, type: String })
+  @Prop({ type: String, default: '' })  // AI 리포트 텍스트 미사용으로 optional 처리
   content: string;
 
   @Prop({ type: Object })

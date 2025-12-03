@@ -19,6 +19,8 @@ import {
   getMarketCondition 
 } from '../../config/confidence.config';
 import { getValidUntil } from '../../config/report-validity.config';
+import { StrategyGenerator } from './services/strategy-generator';
+import { StrategyGenerationContext } from './types/strategy-types';
 
 @Injectable()
 export class AiService {
@@ -30,6 +32,7 @@ export class AiService {
     private indicatorsService: IndicatorsService,
     private symbolsService: SymbolsService,
     private configService: ConfigService,
+    private strategyGenerator: StrategyGenerator,
   ) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     if (apiKey) {
@@ -257,62 +260,46 @@ export class AiService {
     let rawResponse = '';
     const startTime = Date.now();
 
-    // Generate AI report
+    // ⚠️ AI 리포트 텍스트 생성 제거 (프론트에서 미사용, 800 토큰 절감)
+    // 이제 전략(strategy) 데이터만 생성하고, 텍스트 리포트는 생성하지 않음
+    
     if (this.openai) {
       try {
-        // Step 1: 기술적 지표 분석
+        // Step 1: 기술적 지표 분석 (간소화)
         analysisProcess.step1 = {
           status: 'completed',
           result: '기술적 지표 분석 완료',
           details: {
             rsi: latestIndicator?.rsi || 0,
             macd: latestIndicator?.macd || 0,
-            ma5: latestIndicator?.ma5 || 0,
             ma20: latestIndicator?.ma20 || 0,
-            ma60: latestIndicator?.ma60 || 0,
           }
         };
 
-        // Step 2: 패턴 인식
-        const recentTrend = this.analyzeTrend(candles);
+        // Step 2: 패턴 인식 (간소화)
         analysisProcess.step2 = {
           status: 'completed',
           result: '패턴 인식 완료',
-          details: recentTrend
+          details: this.analyzeTrend(candles)
         };
 
-        // Step 3: 리스크 평가
-        const riskAssessment = this.assessRisk(candles, latestIndicator);
+        // Step 3: 리스크 평가 (간소화)
         analysisProcess.step3 = {
           status: 'completed',
           result: '리스크 평가 완료',
-          details: riskAssessment
+          details: this.assessRisk(candles, latestIndicator)
         };
 
-        const completion = await this.openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: '당신은 금융 트레이딩 분석 모델입니다. 수치 기반 사실만 작성하며, 모든 판단에는 구체적인 근거를 명시합니다. 확률 계산 시 반드시 계산 근거를 함께 제시합니다.',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          temperature: 0.5,
-          max_tokens: 800, // 1~4번 섹션만 간단히, 최대 500자로 제한
-        });
-
-        content = completion.choices[0].message.content || '';
-        rawResponse = content;
+        // AI 리포트 텍스트는 생성하지 않음 (비용 절감)
+        content = '';
+        rawResponse = '';
         
-        // 메타데이터 업데이트
+        // 메타데이터 업데이트 (AI 리포트 생성 스킵)
         metadata.model = 'gpt-4o-mini';
         metadata.modelVersion = 'gpt-4o-mini-2024-07-18';
-        metadata.tokensUsed = completion.usage?.total_tokens || 0;
+        metadata.tokensUsed = 0; // 리포트 텍스트 생성 안 함
         metadata.processingTimeMs = Date.now() - startTime;
+        metadata.reportSkipped = true; // 리포트 스킵 플래그
 
         // 🆕 AI 신뢰도 계산 (설정 파일 기반)
         let confidenceScore = CONFIDENCE_CONFIG.base;
@@ -405,25 +392,16 @@ export class AiService {
         explainability.reasoning = this.generateReasoning(latestIndicator, candles);
         explainability.alternatives = this.generateAlternatives(latestIndicator);
         
-        // AI 응답 검증
-        const validation = this.validateAIResponse(content);
-        if (!validation.isValid) {
-          console.warn('AI 응답 검증 실패:', validation.errors);
-          console.warn('원본 응답:', content);
-          // 검증 실패 시 fallback 사용
-          content = this.generateFallbackReport(symbol, latestCandle, latestIndicator);
-          metadata.validationFailed = true;
-          metadata.validationErrors = validation.errors;
-        } else {
-          metadata.validationPassed = true;
-        }
+        // AI 리포트 검증 스킵 (텍스트 생성 안 함)
+        metadata.validationPassed = true;
+        metadata.validationSkipped = true;
       } catch (error) {
-        console.error('OpenAI API error:', error);
-        content = this.generateFallbackReport(symbol, latestCandle, latestIndicator);
+        console.error('AI 분석 오류:', error);
+        content = ''; // 텍스트 리포트 없음
         analysisProcess.step1 = { status: 'error', result: 'API 오류', details: error.message };
       }
     } else {
-      content = this.generateFallbackReport(symbol, latestCandle, latestIndicator);
+      content = ''; // OpenAI 없으면 텍스트 리포트 없음
       analysisProcess.step1 = { status: 'skipped', result: 'OpenAI API 키 없음', details: {} };
     }
 
@@ -476,88 +454,75 @@ export class AiService {
     const stopLossPrice = adjustedTargets.stopLoss;
     metadata.stopLossPrice = stopLossPrice;
 
-    // 🆕 투자 전략 생성 (프리미엄: AI 기반 상세 전략, 기본: 지표 기반 간단 전략)
-    try {
-      // 프리미엄 기능: AI를 활용한 상세 전략 생성
-      const premiumStrategy = await this.generatePremiumStrategy(
-        symbol,
-        latestCandle,
-        latestIndicator,
-        candles,
-        entryPrice,
-        targetPrice1,
-        targetPrice2,
-        stopLossPrice,
-        investmentPeriod as 'swing' | 'medium' | 'long',
-        volatilityLevel,
-        historicalContext,
-        symbol.code
-      );
-      
-      if (premiumStrategy) {
-        metadata.strategy = premiumStrategy;
-        metadata.strategyType = 'premium'; // 프리미엄 전략 표시
-      } else {
-        // Fallback: 기본 전략 생성
-        const basicStrategy = this.generateStrategyFromIndicators(
-          latestCandle,
-          latestIndicator,
-          entryPrice,
-          targetPrice1,
-          targetPrice2,
-          stopLossPrice,
-          investmentPeriod as 'swing' | 'medium' | 'long',
-          volatilityLevel,
-          symbol.code
-        );
-        metadata.strategy = basicStrategy;
-        metadata.strategyType = 'basic';
-      }
+    // 🆕 투자 전략 생성 (리팩터링: 단일 파이프라인)
+    const strategyContext: StrategyGenerationContext = {
+      symbol: {
+        code: symbol.code,
+        name: symbol.name,
+        market: symbol.market,
+      },
+      entryPrice,
+      targetPrice1,
+      targetPrice2,
+      stopLossPrice,
+      latestCandle,
+      latestIndicator,
+      candles,
+      investmentPeriod: investmentPeriod as 'swing' | 'medium' | 'long',
+      volatilityLevel,
+      historicalContext,
+    };
 
-      // 1) 결과 요약 3줄 (추천 → 이유 → 행동)
-      metadata.recommendationSummary = this.buildRecommendationSummary(
-        predictedAction,
-        latestCandle,
-        latestIndicator,
-        investmentPeriod,
-        metadata.strategy
-      );
-
-      // 2) If-Then 구조화 (조건 → 액션 트리)
-      metadata.ifThenRules = this.buildIfThenRules(metadata.strategy);
-
-      // 3) 백테스트 요약 (성공률·평균 수익·최대 낙폭)
-      if (historicalContext) {
-        const maxDrawdown =
-          historicalContext.minReturn !== undefined
-            ? Math.min(0, historicalContext.minReturn)
-            : 0;
-        metadata.backtestSummary = {
-          successRate: historicalContext.successRate,
-          avgReturn: historicalContext.avgReturn,
-          maxDrawdown, // 음수(하락률)로 표시
-          totalCases: historicalContext.totalCases,
-        };
-      }
-
-      // 4) 매수 단가 보정 전략 예시 (DCA 예시 금액)
-      metadata.dcaExamples = this.buildDcaExamples(
-        entryPrice,
-        metadata.strategy,
-        [1_000_000, 10_000_000]
-      );
-    } catch (error) {
-      console.warn('전략 생성 실패:', error.message);
-      // Fallback: 기본 전략 생성
-      metadata.strategy = this.generateFallbackStrategy(
-        entryPrice,
-        targetPrice1,
-        targetPrice2,
-        stopLossPrice,
-        investmentPeriod as 'swing' | 'medium' | 'long'
-      );
-      metadata.strategyType = 'fallback';
+    // StrategyGenerator를 통한 전략 생성 (명확한 출처 추적)
+    const strategyResult = await this.strategyGenerator.generateStrategy(strategyContext);
+    
+    // 전략 저장 및 메타데이터 업데이트
+    metadata.strategy = strategyResult.strategy;
+    metadata.strategyType = strategyResult.source; // 'ai' | 'rule-based' | 'fallback'
+    metadata.strategyConfidence = strategyResult.confidence; // 0-1 신뢰도
+    metadata.strategyGenerationTime = strategyResult.metadata.generationTime;
+    metadata.strategyValidation = {
+      passed: strategyResult.metadata.validationPassed,
+      errors: strategyResult.metadata.validationErrors,
+    };
+    
+    // AI 토큰 사용량 추가 (AI 전략인 경우)
+    if (strategyResult.source === 'ai' && strategyResult.metadata.tokensUsed) {
+      metadata.tokensUsed = (metadata.tokensUsed || 0) + strategyResult.metadata.tokensUsed;
     }
+
+    // 1) 결과 요약 3줄 (추천 → 이유 → 행동)
+    metadata.recommendationSummary = this.buildRecommendationSummary(
+      predictedAction,
+      latestCandle,
+      latestIndicator,
+      investmentPeriod,
+      metadata.strategy
+    );
+
+    // 2) If-Then 구조화 (조건 → 액션 트리)
+    metadata.ifThenRules = this.buildIfThenRules(metadata.strategy);
+
+    // 3) 백테스트 요약 (성공률·평균 수익·최대 낙폭)
+    if (historicalContext) {
+      const maxDrawdown =
+        historicalContext.minReturn !== undefined
+          ? Math.min(0, historicalContext.minReturn)
+          : 0;
+      metadata.backtestSummary = {
+        successRate: historicalContext.successRate,
+        avgReturn: historicalContext.avgReturn,
+        maxDrawdown, // 음수(하락률)로 표시
+        totalCases: historicalContext.totalCases,
+      };
+    }
+
+    // 4) 매수 단가 보정 전략 예시 (DCA 예시 금액)
+    metadata.dcaExamples = this.buildDcaExamples(
+      entryPrice,
+      metadata.strategy,
+      [1_000_000, 10_000_000]
+    );
 
     // Save report
     const report = new this.aiReportModel({
@@ -581,6 +546,7 @@ export class AiService {
     return report.save();
   }
 
+  // ⚠️ DEPRECATED: AI 리포트 텍스트 미사용으로 인한 검증 메서드 제거 예정
   private validateAIResponse(content: string): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
     
@@ -625,6 +591,7 @@ export class AiService {
     };
   }
 
+  // ⚠️ DEPRECATED: AI 리포트 텍스트 미사용으로 인한 프롬프트 메서드 제거 예정
   private buildPrompt(symbol: any, candles: any[], indicators: any[], reportType: string, investmentPeriod: string = 'swing', historicalContext?: any, volatilityLevel: 'high' | 'medium' | 'low' = 'medium'): string {
     // 완성된 캔들 사용 (candles[0]은 진행 중일 수 있음)
     const latest = candles.length > 1 ? candles[1] : candles[0];
@@ -985,6 +952,7 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
     return prompt;
   }
 
+  // ⚠️ DEPRECATED: AI 리포트 텍스트 미사용으로 인한 Fallback 메서드 제거 예정
   private generateFallbackReport(symbol: any, candle: any, indicator: any): string {
     const volumeToDisplay = symbol.volume || candle.volume || 0;
     

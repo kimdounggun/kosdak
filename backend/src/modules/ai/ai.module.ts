@@ -6,6 +6,8 @@ import { IndicatorsModule } from '../indicators/indicators.module';
 import { SymbolsModule } from '../symbols/symbols.module';
 import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
+import { StrategyGenerator } from './services/strategy-generator';
+import { MonitoringService } from './services/monitoring.service';
 
 @Module({
   imports: [
@@ -15,7 +17,7 @@ import { AiService } from './ai.service';
     SymbolsModule,
   ],
   controllers: [AiController],
-  providers: [AiService],
+  providers: [AiService, StrategyGenerator, MonitoringService],
   exports: [AiService],
 })
 export class AiModule {}

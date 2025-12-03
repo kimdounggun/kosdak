@@ -208,3 +208,6 @@ const CONFIDENCE_CONFIG = {
 
 **총 하드코딩 발견**: 50+ 개
 
+
+
+
