@@ -655,8 +655,8 @@ export default function SymbolDetailPage() {
     const baseStopLossPct = currentPrice
       ? Number((((stopLossPrice - currentPrice) / currentPrice) * 100).toFixed(1))
       : -3
-    
-    const baseEntryRatio = meta.strategy?.phase1?.entryRatio ?? 35
+
+      const baseEntryRatio = meta.strategy?.phase1?.entryRatio ?? 35
 
     // 보수형/기본형/공격형 대신 AI 전략 기본값만 사용
     const plans = [
@@ -951,7 +951,7 @@ export default function SymbolDetailPage() {
                         .replace(/^\n+/, '')
                         .trim()
                       
-                      formattedReasoning += `\n\n🛡️ 손절: ${phase1.stopLoss.price?.toLocaleString()}원 (${phase1.stopLoss.percent}%)`
+                      formattedReasoning += `\n\n[손절] ${phase1.stopLoss.price?.toLocaleString()}원 (${phase1.stopLoss.percent}%)`
                       if (phase1.stopLoss.timing) {
                         formattedReasoning += `\n손절 타이밍: ${phase1.stopLoss.timing}`
                       }
@@ -981,11 +981,22 @@ export default function SymbolDetailPage() {
                     }
                     return action
                   })(),
-                  reason: (phase2.bullish.reason || '')
+                  reason: (() => {
+                    let formattedReason = (phase2.bullish.reason || '')
                     .replace(/(\d+\))\s+/g, '\n$1 ')
                     .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
                     .replace(/^\n+/, '')
-                    .trim()
+                      .trim();
+                    
+                    // 추가 매수 가이드 추가
+                    const actionRatio = phase2.bullish.actionRatio || 0;
+                    if (actionRatio > 0) {
+                      formattedReason += `\n\n[추가 매수 규모]\n• 잔여 시드의 ${actionRatio}% (총 투자 비중: ${phase1.entryRatio + actionRatio}%)\n• 예시: 잔여 70만원 → ${(700000 * actionRatio / 100).toLocaleString()}원 추가`;
+                    }
+                    formattedReason += `\n\n[실행 체크리스트]\n□ 기술적 지표 재확인 (RSI, MACD 모멘텀 지속 확인)\n□ 거래량 평균 대비 120% 이상 유지 확인\n□ 주요 이동평균선 지지 확인 (MA5, MA20)\n□ 손절가 상향 조정 고려 (진입가 수준으로)`;
+                    
+                    return formattedReason;
+                  })()
                 }] : []),
                 ...(phase2.sideways ? [{
                   type: 'sideways' as const,
@@ -998,11 +1009,18 @@ export default function SymbolDetailPage() {
                     }
                     return action
                   })(),
-                  reason: (phase2.sideways.reason || '')
+                  reason: (() => {
+                    let formattedReason = (phase2.sideways.reason || '')
                     .replace(/(\d+\))\s+/g, '\n$1 ')
                     .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
                     .replace(/^\n+/, '')
-                    .trim()
+                      .trim();
+                    
+                    formattedReason += `\n\n[횡보 구간 대응 전략]\n• 기존 포지션 유지하며 인내심 있게 관망\n• 박스권 상단 돌파 시 추가 매수 준비\n• 박스권 하단 이탈 시 손절 준비\n• 불필요한 매매 자제 (수수료 낭비 방지)`;
+                    formattedReason += `\n\n[일일 모니터링 포인트]\n□ 박스권 경계선 (상단/하단) 관찰\n□ 거래량 증가 신호 확인\n□ RSI 40~60 구간 유지 여부\n□ 단기 뉴스/공시/업종 이슈 체크`;
+                    
+                    return formattedReason;
+                  })()
                 }] : []),
                 ...(phase2.bearish ? [{
                   type: 'bearish' as const,
@@ -1015,11 +1033,19 @@ export default function SymbolDetailPage() {
                     }
                     return action
                   })(),
-                  reason: (phase2.bearish.reason || '')
+                  reason: (() => {
+                    let formattedReason = (phase2.bearish.reason || '')
                     .replace(/(\d+\))\s+/g, '\n$1 ')
                     .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
                     .replace(/^\n+/, '')
-                    .trim()
+                      .trim();
+                    
+                    const exitRatio = phase2.bearish.exitRatio || 100;
+                    formattedReason += `\n\n[긴급 대응 필요]\n• 보유 물량의 ${exitRatio}% 즉시 매도 (손실 확대 방지)\n• ${exitRatio === 100 ? '전량 청산 후 재진입 타이밍 모색' : `잔여 ${100 - exitRatio}%는 추가 하락 시 손절 준비`}\n• 감정적 판단 배제, 기계적 실행 필요`;
+                    formattedReason += `\n\n[하락 신호 재확인]\n□ 주요 이동평균선 하향 이탈 (MA20, MA60)\n□ MACD 데드크로스 + 히스토그램 감소\n□ RSI 40 이하 약세 구간 진입\n□ 거래량 급증 (공포 매도) 또는 급감 (관심 저하)`;
+                    
+                    return formattedReason;
+                  })()
                 }] : [])
               ]
             },
@@ -1029,7 +1055,7 @@ export default function SymbolDetailPage() {
               scenarios: [
                 ...(phase3.target1 ? [{
                   type: 'target' as const,
-                  condition: `목표 달성 (${phase3.target1.price})`,
+                  condition: `[1차 목표 달성] ${phase3.target1.price}`,
                   action: (() => {
                     let action = phase3.target1.action || `${phase3.target1.exitRatio}% 익절`
                     // action에서 가격 정보 제거 (condition에 이미 있음)
@@ -1041,15 +1067,23 @@ export default function SymbolDetailPage() {
                     action = action.replace(/[\d,]+원\s*(?:달성\s*시|돌파|하회)?\s*→?\s*/g, '').trim()
                     return action || `${phase3.target1.exitRatio}% 익절`
                   })(),
-                  reason: (phase3.target1.reason || '')
+                  reason: (() => {
+                    let formattedReason = (phase3.target1.reason || '')
                     .replace(/(\d+\))\s+/g, '\n$1 ')
                     .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
                     .replace(/^\n+/, '')
-                    .trim()
+                      .trim();
+                    
+                    const exitRatio = phase3.target1.exitRatio || 50;
+                    formattedReason += `\n\n[익절 실행 가이드]\n• 보유 물량의 ${exitRatio}% 매도 (원금 회수 + 수익 확보)\n• 잔여 ${100 - exitRatio}%는 2차 목표 추구\n• 손절가를 진입가 수준으로 상향 조정 (손실 위험 제거)\n• 트레일링 스탑 설정 (목표가 대비 -3~5% 수준)`;
+                    formattedReason += `\n\n[익절 후 전략]\n□ 잔여 물량은 2차 목표까지 홀딩\n□ 급등 후 조정 시 일부 재진입 고려\n□ 수익 실현 후 감정 통제 (과도한 추격 금지)\n□ 다음 진입 기회 모색 (타 종목 포함)`;
+                    
+                    return formattedReason;
+                  })()
                 }] : []),
                 ...(phase3.target2 ? [{
                   type: 'target' as const,
-                  condition: `목표 달성 (${phase3.target2.price})`,
+                  condition: `[2차 목표 달성] ${phase3.target2.price}`,
                   action: (() => {
                     let action = phase3.target2.action || `${phase3.target2.exitRatio}% 익절`
                     // action에서 가격 정보 제거 (condition에 이미 있음)
@@ -1060,11 +1094,19 @@ export default function SymbolDetailPage() {
                     action = action.replace(/[\d,]+원\s*(?:달성\s*시|돌파|하회)?\s*→?\s*/g, '').trim()
                     return action || `${phase3.target2.exitRatio}% 익절`
                   })(),
-                  reason: (phase3.target2.reason || '')
+                  reason: (() => {
+                    let formattedReason = (phase3.target2.reason || '')
                     .replace(/(\d+\))\s+/g, '\n$1 ')
                     .replace(/(\d+\))([^\d\n])/g, '\n$1 $2')
                     .replace(/^\n+/, '')
-                    .trim()
+                      .trim();
+                    
+                    const exitRatio = phase3.target2.exitRatio || 100;
+                    formattedReason += `\n\n[최종 익절 실행]\n• ${exitRatio === 100 ? '잔여 물량 전량 매도 (목표 달성 완료)' : `잔여 물량의 ${exitRatio}% 매도`}\n• 욕심 부리지 말고 기계적 실행\n• 수익률 기록 및 복기 (성공 요인 분석)\n• ${exitRatio < 100 ? `극소량 홀딩 시 트레일링 스탑으로 추가 수익 추구` : '포지션 완전 청산'}`;
+                    formattedReason += `\n\n[트레이딩 마무리]\n□ 전체 수익률 계산 및 기록\n□ 전략 복기 (잘한 점/개선점)\n□ 감정 상태 체크 (과열/공포)\n□ 다음 투자 기회 준비 (자금 재배분)`;
+                    
+                    return formattedReason;
+                  })()
                 }] : [])
               ]
             }
