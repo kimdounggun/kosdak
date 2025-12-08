@@ -96,3 +96,4 @@ IndicatorCacheSchema.index({ symbolId: 1, timeframe: 1, timestamp: -1 });
 
 
 
+
