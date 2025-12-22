@@ -3843,7 +3843,7 @@ export default function SymbolDetailPage() {
                 <AiTrustPanel aiReport={aiReport} generatingReport={generatingReport} />
 
                 {/* AI 히스토리 & 백테스팅 */}
-                <AiHistoryPanel symbolId={Array.isArray(params.id) ? params.id[0] : params.id} />
+                <AiHistoryPanel symbolId={Array.isArray(params.id) ? params.id[0] : (params.id || '')} />
               </>
             )}
             {/* @ts-ignore */}
