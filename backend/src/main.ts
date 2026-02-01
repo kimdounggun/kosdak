@@ -8,7 +8,9 @@ async function bootstrap() {
 
   // Enable CORS
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: process.env.NODE_ENV === 'production' 
+      ? [process.env.FRONTEND_URL, 'https://kosdak.netlify.app']
+      : true, // 개발 환경에서는 모든 origin 허용
     credentials: true,
   });
 
