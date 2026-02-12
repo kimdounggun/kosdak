@@ -3,10 +3,7 @@
   "version": "1.0.0",
   "description": "Delayed Quote Premium AI Stock Analysis & Alert Web Platform",
   "private": true,
-  "workspaces": [
-    "backend",
-    "frontend"
-  ],
+  "workspaces": ["backend", "frontend"],
   "scripts": {
     "postinstall": "echo 'Dependencies installed'",
     "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"bgBlue.bold,bgMagenta.bold\" \"cd backend && npm run start:dev\" \"cd frontend && npm run dev\"",
@@ -20,7 +17,6 @@
     "concurrently": "^8.2.2"
   },
   "dependencies": {
-    "install": "^0.13.0",
-    "next": "^14.2.35"
+    "install": "^0.13.0"
   }
 }
