@@ -1,5 +1,6 @@
 import { IsEmail, IsString, MinLength, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 
 export class RegisterDto {
   @ApiProperty({ example: 'user@example.com' })
@@ -17,6 +18,7 @@ export class RegisterDto {
 
   @ApiProperty({ example: '01012345678', required: false })
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsString()
   phoneNumber?: string;
 }

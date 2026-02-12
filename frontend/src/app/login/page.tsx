@@ -27,18 +27,24 @@ export default function LoginPage() {
         toast.success('로그인 성공!')
         router.push('/dashboard')
       } else {
-        // Register logic
+        // Register logic - phoneNumber 빈 문자열이면 제외
+        const payload = {
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+          ...(formData.phoneNumber?.trim() && { phoneNumber: formData.phoneNumber.trim() }),
+        }
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify(payload),
         })
 
-        if (!response.ok) {
-          throw new Error('회원가입 실패')
-        }
-
         const data = await response.json()
+        if (!response.ok) {
+          const msg = Array.isArray(data.message) ? data.message.join(', ') : data.message || '회원가입 실패'
+          throw new Error(msg)
+        }
         useAuthStore.getState().setAuth(data.accessToken, data.user)
         toast.success('회원가입 성공!')
         router.push('/dashboard')
@@ -79,6 +85,8 @@ export default function LoginPage() {
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 className="w-full px-4 py-3 bg-dark-200 border border-gray-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition"
                 required
+                minLength={isLogin ? undefined : 8}
+                placeholder={!isLogin ? '8자 이상' : undefined}
               />
             </div>
 
