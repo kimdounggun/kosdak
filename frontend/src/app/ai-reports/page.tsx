@@ -10,32 +10,27 @@ import { BarChart3 } from 'lucide-react'
 
 export default function AiReportsPage() {
   const router = useRouter()
-  const { isAuthenticated, isHydrated } = useIsAuthenticated()
+  const { isHydrated } = useIsAuthenticated()
   const [reports, setReports] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!isHydrated) return
-
-    if (!isAuthenticated) {
-      router.push('/login')
-      return
-    }
     loadReports()
-  }, [isHydrated, isAuthenticated])
+  }, [isHydrated])
 
   const loadReports = async () => {
     try {
       const response = await api.get('/ai/reports?limit=20')
       setReports(response.data)
-    } catch (error) {
-      console.error('Failed to load reports:', error)
+    } catch {
+      setReports([])
     } finally {
       setLoading(false)
     }
   }
 
-  if (!isHydrated || !isAuthenticated) {
+  if (!isHydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-dark-100">
         <LoadingSpinner message="리포트 로딩 중..." size="md" />
@@ -66,7 +61,7 @@ export default function AiReportsPage() {
               onClick={() => router.push('/symbols')}
               className="px-4 py-2 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition text-sm"
             >
-              AI 분석 요청하기
+              종목에서 AI 분석 요청하기
             </button>
           </div>
         ) : (

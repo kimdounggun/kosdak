@@ -9,20 +9,15 @@ import { TrendingUp } from 'lucide-react'
 
 export default function SymbolsPage() {
   const router = useRouter()
-  const { isAuthenticated, isHydrated } = useIsAuthenticated()
+  const { isHydrated, token } = useIsAuthenticated()
   const [symbols, setSymbols] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('ALL')
 
   useEffect(() => {
     if (!isHydrated) return
-
-    if (!isAuthenticated) {
-      router.push('/login')
-      return
-    }
     loadSymbols()
-  }, [isHydrated, isAuthenticated])
+  }, [isHydrated])
 
   const loadSymbols = async () => {
     try {
@@ -39,7 +34,7 @@ export default function SymbolsPage() {
     filter === 'ALL' || s.market === filter
   )
 
-  if (!isAuthenticated) return null
+  if (!isHydrated) return null
 
   return (
     <DashboardLayout>
@@ -47,7 +42,7 @@ export default function SymbolsPage() {
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-lg sm:text-xl font-bold">전체 종목</h1>
           <button
-            onClick={() => router.push('/symbols/add')}
+            onClick={() => router.push(token ? '/symbols/add' : '/login')}
             className="px-3 sm:px-4 py-1.5 sm:py-2 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition text-xs sm:text-sm whitespace-nowrap"
           >
             + 추가

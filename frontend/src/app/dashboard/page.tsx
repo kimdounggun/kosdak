@@ -18,43 +18,41 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isHydrated) return
-
-    if (!isAuthenticated || !token) {
-      router.push('/login')
-      return
+    if (token) {
+      loadUserSymbols()
+    } else {
+      setSymbols([])
+      setLoading(false)
     }
-
-    loadUserSymbols()
-  }, [isHydrated, isAuthenticated, token])
+  }, [isHydrated, token])
 
   const loadUserSymbols = async () => {
     try {
       const response = await api.get('/symbols/user/my-symbols')
-      // symbolId가 null이 아닌 것만 필터링
       const validSymbols = response.data.filter((userSymbol: any) => userSymbol.symbolId != null)
       setSymbols(validSymbols)
     } catch (error: any) {
-      console.error('Failed to load symbols:', error.response?.data || error.message)
+      setSymbols([])
     } finally {
       setLoading(false)
     }
   }
 
   const handleDeleteSymbol = async (userSymbolId: string) => {
+    if (!token) return
     try {
       await api.delete(`/symbols/user/symbols/${userSymbolId}`)
       toast.success('관심종목에서 제거되었습니다')
-      loadUserSymbols() // 목록 새로고침
+      loadUserSymbols()
     } catch (error: any) {
-      console.error('Failed to delete symbol:', error)
       toast.error(error.response?.data?.message || '제거 실패')
     }
   }
 
-  if (!isHydrated || !isAuthenticated || !token) {
+  if (!isHydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-dark-100">
-        <LoadingSpinner message="인증 확인 중..." size="md" />
+        <LoadingSpinner message="로딩 중..." size="md" />
       </div>
     )
   }
@@ -66,12 +64,12 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between gap-2">
           <div>
             <p className="text-xs sm:text-sm text-gray-400 truncate">
-              {user?.name}님 환영합니다
+              {user?.name ? `${user.name}님 환영합니다` : '비로그인으로 둘러보기 (포트폴리오)'}
             </p>
           </div>
 
           <button
-            onClick={() => router.push('/symbols/add')}
+            onClick={() => (token ? router.push('/symbols/add') : router.push('/login'))}
             className="px-3 sm:px-4 py-1.5 sm:py-2 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
           >
             + 종목 추가
@@ -101,12 +99,14 @@ export default function DashboardPage() {
           </div>
         ) : symbols.length === 0 ? (
           <div className="glass rounded-lg p-6 sm:p-8 text-center">
-            <p className="text-gray-400 mb-3 text-sm">등록된 관심종목이 없습니다</p>
+            <p className="text-gray-400 mb-3 text-sm">
+              {token ? '등록된 관심종목이 없습니다' : '로그인하면 관심종목을 저장할 수 있어요'}
+            </p>
             <button
-              onClick={() => router.push('/symbols/add')}
+              onClick={() => router.push(token ? '/symbols/add' : '/login')}
               className="px-4 py-2 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition text-sm"
             >
-              첫 종목 추가하기
+              {token ? '첫 종목 추가하기' : '로그인'}
             </button>
           </div>
         ) : (

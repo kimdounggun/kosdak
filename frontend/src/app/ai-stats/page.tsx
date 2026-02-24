@@ -10,20 +10,15 @@ import { BarChart3, TrendingUp, Target, Award, Users } from 'lucide-react'
 
 export default function AiStatsPage() {
   const router = useRouter()
-  const { isAuthenticated, isHydrated } = useIsAuthenticated()
+  const { isHydrated } = useIsAuthenticated()
   const [platformStats, setPlatformStats] = useState<any>(null)
   const [myStats, setMyStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!isHydrated) return
-
-    if (!isAuthenticated) {
-      router.push('/login')
-      return
-    }
     loadStats()
-  }, [isHydrated, isAuthenticated])
+  }, [isHydrated])
 
   const loadStats = async () => {
     try {
@@ -33,14 +28,15 @@ export default function AiStatsPage() {
       ])
       setPlatformStats(platformRes.data)
       setMyStats(myRes.data)
-    } catch (error) {
-      console.error('Failed to load stats:', error)
+    } catch {
+      setPlatformStats(null)
+      setMyStats(null)
     } finally {
       setLoading(false)
     }
   }
 
-  if (!isHydrated || !isAuthenticated) {
+  if (!isHydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-dark-100">
         <LoadingSpinner message="통계 로딩 중..." size="md" />

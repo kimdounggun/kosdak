@@ -10,7 +10,7 @@ import toast from 'react-hot-toast'
 
 export default function CreateAlertPage() {
   const router = useRouter()
-  const { isAuthenticated, isHydrated } = useIsAuthenticated()
+  const { isHydrated, token } = useIsAuthenticated()
   const [symbols, setSymbols] = useState<any[]>([])
   const [formData, setFormData] = useState({
     symbolId: '',
@@ -23,13 +23,8 @@ export default function CreateAlertPage() {
 
   useEffect(() => {
     if (!isHydrated) return
-
-    if (!isAuthenticated) {
-      router.push('/login')
-      return
-    }
     loadSymbols()
-  }, [isHydrated, isAuthenticated])
+  }, [isHydrated])
 
   const loadSymbols = async () => {
     try {
@@ -42,7 +37,11 @@ export default function CreateAlertPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+    if (!token) {
+      toast.error('로그인이 필요합니다')
+      router.push('/login')
+      return
+    }
     if (!formData.symbolId) {
       toast.error('종목을 선택해주세요')
       return
@@ -71,7 +70,7 @@ export default function CreateAlertPage() {
     }
   }
 
-  if (!isHydrated || !isAuthenticated) {
+  if (!isHydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-dark-100">
         <LoadingSpinner message="로딩 중..." size="md" />

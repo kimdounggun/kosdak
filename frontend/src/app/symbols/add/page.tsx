@@ -10,7 +10,7 @@ import toast from 'react-hot-toast'
 
 export default function AddSymbolPage() {
   const router = useRouter()
-  const { isAuthenticated, isHydrated } = useIsAuthenticated()
+  const { isHydrated, token } = useIsAuthenticated()
   const [symbols, setSymbols] = useState<any[]>([])
   const [userSymbols, setUserSymbols] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -18,37 +18,30 @@ export default function AddSymbolPage() {
 
   useEffect(() => {
     if (!isHydrated) return
-
-    if (!isAuthenticated) {
-      router.push('/login')
-      return
-    }
     loadSymbols()
-  }, [isHydrated, isAuthenticated])
+  }, [isHydrated])
 
   const loadSymbols = async () => {
     try {
-      const [symbolsResponse, userSymbolsResponse] = await Promise.all([
-        api.get('/symbols'),
-        api.get('/symbols/user/my-symbols')
-      ])
-      
+      const symbolsResponse = await api.get('/symbols')
       const allSymbols = symbolsResponse.data
-      const userSymbolIds = new Set(
-        userSymbolsResponse.data
-          .filter((us: any) => us.symbolId)
-          .map((us: any) => us.symbolId._id.toString())
-      )
-      
-      // 이미 추가된 종목 제외
-      const availableSymbols = allSymbols.filter(
-        (symbol: any) => !userSymbolIds.has(symbol._id.toString())
-      )
-      
-      setSymbols(availableSymbols)
-      setUserSymbols(userSymbolsResponse.data)
+      if (token) {
+        try {
+          const userSymbolsResponse = await api.get('/symbols/user/my-symbols')
+          const userSymbolIds = new Set(
+            userSymbolsResponse.data
+              .filter((us: any) => us.symbolId)
+              .map((us: any) => us.symbolId._id.toString())
+          )
+          setSymbols(allSymbols.filter((s: any) => !userSymbolIds.has(s._id.toString())))
+          setUserSymbols(userSymbolsResponse.data)
+        } catch {
+          setSymbols(allSymbols)
+        }
+      } else {
+        setSymbols(allSymbols)
+      }
     } catch (error) {
-      console.error('Failed to load symbols:', error)
       toast.error('종목 목록을 불러오지 못했습니다')
     } finally {
       setLoading(false)
@@ -56,12 +49,16 @@ export default function AddSymbolPage() {
   }
 
   const addSymbol = async (symbolId: string) => {
+    if (!token) {
+      toast.error('로그인이 필요합니다')
+      router.push('/login')
+      return
+    }
     try {
       await api.post('/symbols/user/symbols', { symbolId })
       toast.success('관심종목에 추가되었습니다')
       router.push('/dashboard')
     } catch (error: any) {
-      console.error('Failed to add symbol:', error)
       toast.error(error.response?.data?.message || '추가 실패')
     }
   }
@@ -78,7 +75,7 @@ export default function AddSymbolPage() {
     )
   })
 
-  if (!isHydrated || !isAuthenticated) {
+  if (!isHydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-dark-100">
         <LoadingSpinner message="종목 목록 로딩 중..." size="md" />

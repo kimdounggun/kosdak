@@ -11,32 +11,28 @@ import toast from 'react-hot-toast'
 
 export default function AlertsPage() {
   const router = useRouter()
-  const { isAuthenticated, isHydrated } = useIsAuthenticated()
+  const { isHydrated, token } = useIsAuthenticated()
   const [alerts, setAlerts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!isHydrated) return
-
-    if (!isAuthenticated) {
-      router.push('/login')
-      return
-    }
     loadAlerts()
-  }, [isHydrated, isAuthenticated])
+  }, [isHydrated])
 
   const loadAlerts = async () => {
     try {
       const response = await api.get('/alerts')
       setAlerts(response.data)
-    } catch (error) {
-      console.error('Failed to load alerts:', error)
+    } catch {
+      setAlerts([])
     } finally {
       setLoading(false)
     }
   }
 
   const toggleAlert = async (id: string, active: boolean) => {
+    if (!token) return
     try {
       await api.patch(`/alerts/${id}`, { active: !active })
       toast.success(active ? '알림 비활성화' : '알림 활성화')
@@ -47,6 +43,7 @@ export default function AlertsPage() {
   }
 
   const deleteAlert = async (id: string) => {
+    if (!token) return
     if (!confirm('알림을 삭제하시겠습니까?')) return
     try {
       await api.delete(`/alerts/${id}`)
@@ -57,7 +54,7 @@ export default function AlertsPage() {
     }
   }
 
-  if (!isHydrated || !isAuthenticated) {
+  if (!isHydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-dark-100">
         <LoadingSpinner message="알림 로딩 중..." size="md" />
@@ -71,7 +68,7 @@ export default function AlertsPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">알림 관리</h1>
           <button
-            onClick={() => router.push('/alerts/create')}
+            onClick={() => (token ? router.push('/alerts/create') : router.push('/login'))}
             className="px-6 py-3 bg-primary-600 hover:bg-primary-700 rounded-lg font-semibold transition"
           >
             + 알림 추가

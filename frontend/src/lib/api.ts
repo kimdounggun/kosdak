@@ -24,17 +24,9 @@ api.interceptors.request.use(
   },
 )
 
-// Response interceptor to handle errors
+// Response interceptor to handle errors (비로그인 접근 허용으로 401 시 리다이렉트 제거)
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      if (typeof window !== 'undefined') {
-        useAuthStore.getState().logout()
-        window.location.href = '/login'
-      }
-    }
-    return Promise.reject(error)
-  },
+  (error) => Promise.reject(error),
 )
 

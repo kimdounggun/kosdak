@@ -86,7 +86,7 @@ const VolumeBar = ({ current, max, width = 120, height = 8 }: { current: number,
 export default function SymbolDetailPage() {
   const router = useRouter()
   const params = useParams()
-  const { isAuthenticated, isHydrated } = useIsAuthenticated()
+  const { isHydrated, token } = useIsAuthenticated()
   const [symbol, setSymbol] = useState<any>(null)
   const [candles, setCandles] = useState<any[]>([])
   const [indicators, setIndicators] = useState<any>(null)
@@ -104,45 +104,38 @@ export default function SymbolDetailPage() {
 
   useEffect(() => {
     if (!isHydrated) return
-
-    if (!isAuthenticated) {
-      router.push('/login')
-      return
-    }
     loadData()
-  }, [isHydrated, isAuthenticated])
+  }, [isHydrated])
 
   const loadData = async () => {
     try {
-      const [symbolRes, candlesRes, indicatorsRes] = await Promise.all([
-        api.get(`/symbols/${params.id}`),
+      // 종목 정보는 비로그인도 조회 가능
+      const symbolRes = await api.get(`/symbols/${params.id}`)
+      setSymbol(symbolRes.data)
+
+      const [candlesSettled, indicatorsSettled] = await Promise.allSettled([
         api.get(`/symbols/${params.id}/candles?timeframe=5m&limit=50`),
         api.get(`/symbols/${params.id}/indicators/latest?timeframe=5m`),
       ])
+      setCandles(candlesSettled.status === 'fulfilled' ? candlesSettled.value.data : [])
+      setIndicators(indicatorsSettled.status === 'fulfilled' ? indicatorsSettled.value.data : null)
 
-      setSymbol(symbolRes.data)
-      setCandles(candlesRes.data)
-      setIndicators(indicatorsRes.data)
-
-      // AI 리포트 불러오기 (선택사항)
-      try {
-        const aiRes = await api.get(`/ai/report/latest?symbolId=${params.id}&investmentPeriod=${investmentPeriod}`)
-        setAiReport(aiRes.data)
-      } catch (err) {
-        // AI 리포트 없음 - 정상 (사용자가 생성해야 함)
+      if (token) {
+        try {
+          const aiRes = await api.get(`/ai/report/latest?symbolId=${params.id}&investmentPeriod=${investmentPeriod}`)
+          setAiReport(aiRes.data)
+        } catch {
+          // AI 리포트 없음 - 정상
+        }
       }
     } catch (error: any) {
-      console.error('Failed to load data:', error)
-      
       const status = error.response?.status
       const message = error.response?.data?.message || error.message
-      
       if (status === 404) {
         toast.error('❌ 종목을 찾을 수 없습니다.', { duration: 4000 })
         setTimeout(() => router.push('/symbols'), 2000)
       } else if (status === 401 || status === 403) {
-        toast.error('🔒 로그인이 필요합니다.', { duration: 3000 })
-        setTimeout(() => router.push('/login'), 1500)
+        toast.error('🔒 로그인하면 더 많은 기능을 이용할 수 있어요.', { duration: 3000 })
       } else if (status === 500) {
         toast.error(`🚨 서버 오류: ${message}`, { duration: 5000 })
       } else if (!status) {
@@ -216,10 +209,10 @@ export default function SymbolDetailPage() {
     }
   }
 
-  if (!isHydrated || !isAuthenticated) {
+  if (!isHydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-dark-100">
-        <LoadingSpinner message="인증 확인 중..." size="md" />
+        <LoadingSpinner message="로딩 중..." size="md" />
       </div>
     )
   }

@@ -92,26 +92,35 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             })}
           </nav>
 
-          {/* User info */}
+          {/* User info / Guest */}
           <div className="p-4 border-t border-white/10">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center">
-                <span className="font-semibold">
-                  {user?.name?.charAt(0) || 'U'}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium truncate text-white">{user?.name}</p>
-                <p className="text-sm text-[#CFCFCF] truncate">{user?.email}</p>
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-[#15171A] transition text-red-400"
-            >
-              <LogOut className="w-5 h-5" />
-              <span>로그아웃</span>
-            </button>
+            {user ? (
+              <>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center">
+                    <span className="font-semibold">{user.name?.charAt(0) || 'U'}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate text-white">{user.name}</p>
+                    <p className="text-sm text-[#CFCFCF] truncate">{user.email}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-[#15171A] transition text-red-400"
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span>로그아웃</span>
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => router.push('/login')}
+                className="w-full flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 transition text-white font-medium"
+              >
+                <span>로그인</span>
+              </button>
+            )}
           </div>
         </div>
       </aside>
