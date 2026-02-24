@@ -1183,7 +1183,8 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
     return this.aiReportModel.findOne(query).sort({ createdAt: -1 });
   }
 
-  async getUserReports(userId: string, limit: number = 20) {
+  async getUserReports(userId?: string, limit: number = 20) {
+    if (!userId) return [];
     return this.aiReportModel
       .find({ userId: new Types.ObjectId(userId) })
       .populate('symbolId')
@@ -1191,9 +1192,10 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
       .limit(limit);
   }
 
-  async getSymbolHistory(symbolId: string, userId: string, limit: number = 10) {
+  async getSymbolHistory(symbolId: string, userId?: string, limit: number = 10) {
+    if (!userId) return [];
     const reports = await this.aiReportModel
-      .find({ 
+      .find({
         symbolId: new Types.ObjectId(symbolId),
         userId: new Types.ObjectId(userId)
       })
@@ -1212,9 +1214,25 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
     }));
   }
 
-  async getBacktestingStats(symbolId: string, userId: string) {
+  async getBacktestingStats(symbolId: string, userId?: string) {
+    if (!userId) {
+      return {
+        totalPredictions: 0,
+        accuracy: 0,
+        buyAccuracy: 0,
+        sellAccuracy: 0,
+        avgProfit: 0,
+        actionBreakdown: {
+          strongBuy: { count: 0, accuracy: 0 },
+          buy: { count: 0, accuracy: 0 },
+          hold: { count: 0, accuracy: 0 },
+          caution: { count: 0, accuracy: 0 },
+          sell: { count: 0, accuracy: 0 },
+        }
+      };
+    }
     const reports = await this.aiReportModel
-      .find({ 
+      .find({
         symbolId: new Types.ObjectId(symbolId),
         userId: new Types.ObjectId(userId),
         'actualOutcome.wasDirectionCorrect': { $exists: true }
@@ -1303,13 +1321,14 @@ ${investmentPeriod === 'swing' ? '- 단기 변동성 활용, 빠른 진입/청�
   }
 
   /**
-   * 내 통합 통계 (모든 종목 통합)
+   * 내 통합 통계 (모든 종목 통합). userId 없으면 빈 통계 반환 (비로그인).
    */
-  async getMyStats(userId: string) {
+  async getMyStats(userId?: string) {
+    if (!userId) return this.getEmptyStats();
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    
+
     const reports = await this.aiReportModel
-      .find({ 
+      .find({
         userId: new Types.ObjectId(userId),
         createdAt: { $gte: thirtyDaysAgo },
         'actualOutcome.wasDirectionCorrect': { $exists: true }

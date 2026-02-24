@@ -109,24 +109,20 @@ export default function SymbolDetailPage() {
 
   const loadData = async () => {
     try {
-      // 종목 정보는 비로그인도 조회 가능
-      const symbolRes = await api.get(`/symbols/${params.id}`)
-      setSymbol(symbolRes.data)
-
-      const [candlesSettled, indicatorsSettled] = await Promise.allSettled([
+      const [symbolRes, candlesRes, indicatorsRes] = await Promise.all([
+        api.get(`/symbols/${params.id}`),
         api.get(`/symbols/${params.id}/candles?timeframe=5m&limit=50`),
         api.get(`/symbols/${params.id}/indicators/latest?timeframe=5m`),
       ])
-      setCandles(candlesSettled.status === 'fulfilled' ? candlesSettled.value.data : [])
-      setIndicators(indicatorsSettled.status === 'fulfilled' ? indicatorsSettled.value.data : null)
+      setSymbol(symbolRes.data)
+      setCandles(candlesRes.data)
+      setIndicators(indicatorsRes.data)
 
-      if (token) {
-        try {
-          const aiRes = await api.get(`/ai/report/latest?symbolId=${params.id}&investmentPeriod=${investmentPeriod}`)
-          setAiReport(aiRes.data)
-        } catch {
-          // AI 리포트 없음 - 정상
-        }
+      try {
+        const aiRes = await api.get(`/ai/report/latest?symbolId=${params.id}&investmentPeriod=${investmentPeriod}`)
+        setAiReport(aiRes.data)
+      } catch {
+        // AI 리포트 없음 - 정상
       }
     } catch (error: any) {
       const status = error.response?.status

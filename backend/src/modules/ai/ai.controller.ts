@@ -1,12 +1,12 @@
 import { Controller, Post, Get, Body, Query, UseGuards, Request, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { AiService } from './ai.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { GenerateReportDto } from './dto/ai.dto';
 
 @ApiTags('ai')
 @Controller('ai')
-@UseGuards(JwtAuthGuard)
+@UseGuards(OptionalJwtAuthGuard)
 @ApiBearerAuth()
 export class AiController {
   constructor(private aiService: AiService) {}
@@ -14,11 +14,12 @@ export class AiController {
   @Post('report')
   @ApiOperation({ summary: 'Generate AI analysis report' })
   async generateReport(@Request() req, @Body() dto: GenerateReportDto) {
+    const userId = req.user?._id?.toString();
     return this.aiService.generateReport(
       dto.symbolId,
       dto.timeframe,
       dto.reportType,
-      req.user._id.toString(),
+      userId,
       dto.investmentPeriod,
     );
   }
@@ -34,7 +35,6 @@ export class AiController {
     @Query('timeframe') timeframe?: string,
     @Query('investmentPeriod') investmentPeriod: string = 'swing',
   ) {
-    // timeframe이 없으면 investmentPeriod에 따라 결정
     if (!timeframe) {
       const timeframeMap: Record<string, string> = {
         'swing': '1d',
@@ -43,14 +43,14 @@ export class AiController {
       };
       timeframe = timeframeMap[investmentPeriod] || '1d';
     }
-    return this.aiService.getLatestReport(symbolId, timeframe, req.user._id.toString());
+    return this.aiService.getLatestReport(symbolId, timeframe, req.user?._id?.toString());
   }
 
   @Get('reports')
   @ApiOperation({ summary: 'Get user AI reports history' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async getUserReports(@Request() req, @Query('limit') limit: number = 20) {
-    return this.aiService.getUserReports(req.user._id.toString(), limit);
+    return this.aiService.getUserReports(req.user?._id?.toString(), limit);
   }
 
   @Get('reports/history/:symbolId')
@@ -60,7 +60,7 @@ export class AiController {
     @Param('symbolId') symbolId: string,
     @Query('limit') limit: number = 10,
   ) {
-    return this.aiService.getSymbolHistory(symbolId, req.user._id.toString(), limit);
+    return this.aiService.getSymbolHistory(symbolId, req.user?._id?.toString(), limit);
   }
 
   @Get('reports/stats/:symbolId')
@@ -69,7 +69,7 @@ export class AiController {
     @Request() req,
     @Param('symbolId') symbolId: string,
   ) {
-    return this.aiService.getBacktestingStats(symbolId, req.user._id.toString());
+    return this.aiService.getBacktestingStats(symbolId, req.user?._id?.toString());
   }
 
   @Get('stats/platform')
@@ -81,7 +81,7 @@ export class AiController {
   @Get('stats/me')
   @ApiOperation({ summary: 'Get my AI statistics (all symbols combined)' })
   async getMyStats(@Request() req) {
-    return this.aiService.getMyStats(req.user._id.toString());
+    return this.aiService.getMyStats(req.user?._id?.toString());
   }
 }
 
