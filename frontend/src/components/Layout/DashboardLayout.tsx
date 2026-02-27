@@ -114,12 +114,20 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => router.push('/login')}
-                className="w-full flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 transition text-white font-medium"
-              >
-                <span>로그인</span>
-              </button>
+              <div className="space-y-3">
+                <div className="text-xs text-[#CFCFCF]">
+                  <p className="font-medium text-white mb-1">게스트로 둘러보는 중</p>
+                  <p className="text-[11px] text-gray-400">
+                    로그인하면 관심종목과 AI 분석 히스토리를 저장할 수 있어요.
+                  </p>
+                </div>
+                <button
+                  onClick={() => router.push('/login')}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-primary-500/60 text-primary-200 hover:bg-primary-600/10 hover:border-primary-400 transition text-sm font-medium"
+                >
+                  <span>로그인하기</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
